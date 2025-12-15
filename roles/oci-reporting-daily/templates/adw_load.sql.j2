@@ -1,0 +1,36 @@
+SET DEFINE OFF
+SET FEEDBACK OFF
+SET SERVEROUTPUT ON
+
+DECLARE
+  v_table        VARCHAR2(128) := '&1';
+  v_file         VARCHAR2(4000) := '&2';
+  v_metric_group VARCHAR2(64) := '&3';
+  v_source       VARCHAR2(64) := '&4';
+BEGIN
+  EXECUTE IMMEDIATE '
+    INSERT INTO ' || v_table || ' (
+      REPORT_PERIOD,
+      REPORT_TS,
+      METRIC_GROUP,
+      SOURCE_SYSTEM,
+      VALUE_TEXT,
+      LOADED_AT
+    )
+    SELECT
+      ''' || '{{ report_period }}' || ''',
+      SYSTIMESTAMP,
+      ''' || v_metric_group || ''',
+      ''' || v_source || ''',
+      column_value,
+      SYSTIMESTAMP
+    FROM TABLE(
+      apex_string.split(
+        apex_util.get_blob_file_src(''' || v_file || '''), CHR(10)
+      )
+    )';
+
+  COMMIT;
+END;
+/
+EXIT;

@@ -1,14 +1,10 @@
 ---
-# Stage 3: Report - reference existing role task files
-
-- name: Stage 3 | Set facts
-  import_tasks: set_facts.yml
-
-- name: Stage 3 | Find files
-  import_tasks: 01_find_files.yml
-
-- name: Stage 3 | Generate reports
-  import_tasks: 02_generate_reports.yml
-
-- name: Stage 3 | Verify reports
-  import_tasks: 03_verify.yml
+- name: Generate Daily Excel Report from ADW
+  command: >
+    {{ ansible_python_interpreter }}
+    {{ scripts_dir }}/generate_excel_report.py
+    --table {{ adw_target_table }}
+    --period DAILY
+    --output {{ reports_dir }}/oci_daily_report_{{ ts_file }}.xlsx
+  register: report_generation
+  changed_when: true

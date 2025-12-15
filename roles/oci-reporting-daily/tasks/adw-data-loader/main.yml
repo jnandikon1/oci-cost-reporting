@@ -1,20 +1,22 @@
 ---
-# Stage 2: Persist - reference existing role task files
+- name: Load ADB inventory into ADW (DAILY)
+  when: collect_adb_inventory and load_to_adw
+  command: >
+    sqlplus -s {{ adw_user }}/{{ adw_password }}@{{ adw_connection_string }}
+    @{{ role_path }}/templates/adw_load.sql.j2
+    {{ adw_target_table }}
+    {{ data_dir }}/adb_inventory_daily_{{ ts_file }}.csv
+    INVENTORY
+    ADB
+  changed_when: true
 
-- name: Stage 2 | Set facts
-  import_tasks: set_facts.yml
-
-- name: Stage 2 | Validate Wallet
-  import_tasks: 01_validate_wallet.yml
-
-- name: Stage 2 | Retrieve Credentials
-  import_tasks: 02_retrieve_credentials.yml
-
-- name: Stage 2 | Generate Loader
-  import_tasks: 03_generate_loader.yml
-
-- name: Stage 2 | Load Data
-  import_tasks: 04_load_data.yml
-
-- name: Stage 2 | Verify
-  import_tasks: 05_verify.yml
+- name: Load Non-ADB inventory into ADW (DAILY)
+  when: collect_non_adb_inventory and load_to_adw
+  command: >
+    sqlplus -s {{ adw_user }}/{{ adw_password }}@{{ adw_connection_string }}
+    @{{ role_path }}/templates/adw_load.sql.j2
+    {{ adw_target_table }}
+    {{ data_dir }}/non_adb_inventory_daily_{{ ts_file }}.csv
+    INVENTORY
+    NON_ADB
+  changed_when: true

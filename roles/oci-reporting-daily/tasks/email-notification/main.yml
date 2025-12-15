@@ -1,17 +1,22 @@
 ---
-# Stage 4: Distribute - reference existing role task files
+- name: Send Daily Report Email
+  when: email_enabled
+  mail:
+    host: "{{ smtp_host }}"
+    port: "{{ smtp_port }}"
+    from: "{{ email_from }}"
+    to: "{{ email_to }}"
+    cc: "{{ email_cc | default(omit) }}"
+    subject: "{{ email_subject }}"
+    body: |
+      Hello Team,
 
-- name: Stage 4 | Set facts
-  import_tasks: set_facts.yml
+      Please find attached the OCI DAILY Cost & Usage Report.
 
-- name: Stage 4 | Validate config
-  import_tasks: 01_validate_config.yml
+      Report Period : DAILY
+      Generated On  : {{ ansible_date_time.iso8601 }}
 
-- name: Stage 4 | Prepare email
-  import_tasks: 02_prepare_email.yml
-
-- name: Stage 4 | Send email
-  import_tasks: 03_send.yml
-
-- name: Stage 4 | Verify delivery
-  import_tasks: 04_verify.yml
+      Regards,
+      OCI Reporting Automation
+    attach:
+      - "{{ reports_dir }}/oci_daily_report_{{ ts_file }}.xlsx"

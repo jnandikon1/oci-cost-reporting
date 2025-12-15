@@ -1,14 +1,29 @@
 ---
-# Stage 1: Collect - reference existing role task files
+- name: Collect ADB Inventory
+  when: collect_adb_inventory
+  command: >
+    {{ ansible_python_interpreter }}
+    {{ scripts_dir }}/collect_adb_inventory.py
+    --profile {{ oci_profile }}
+    --output {{ data_dir }}/adb_inventory_daily_{{ ts_file }}.csv
+  register: adb_inventory_result
+  changed_when: true
 
-- name: Stage 1 | Set facts
-  import_tasks: set_facts.yml
+- name: Collect Non-ADB Infrastructure Inventory
+  when: collect_non_adb_inventory
+  command: >
+    {{ ansible_python_interpreter }}
+    {{ scripts_dir }}/collect_non_adb_inventory.py
+    --profile {{ oci_profile }}
+    --output {{ data_dir }}/non_adb_inventory_daily_{{ ts_file }}.csv
+  register: non_adb_inventory_result
+  changed_when: true
 
-- name: Stage 1 | Validate
-  import_tasks: 01_validate.yml
-
-- name: Stage 1 | Execute
-  import_tasks: 02_execute.yml
-
-- name: Stage 1 | Verify
-  import_tasks: 03_verify.yml
+- name: Collect OEM OCPU Cost Metrics (Daily)
+  when: collect_oem_db or collect_oem_app
+  command: >
+    sqlplus -s {{ oem_repo_user }}/{{ oem_repo_password }}@{{ oem_repo_db_service }}
+    @{{ role_path }}/templates/daily_report.sql.j2
+  environment:
+    LD_LIBRARY_PATH: "{{ oracle_ld_library_path }}"
+  changed_when: true
