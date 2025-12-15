@@ -1,0 +1,17 @@
+---
+# Stage 4: Distribute - reference existing role task files
+
+- name: Stage 4 | Set facts
+  import_tasks: set_facts.yml
+
+- name: Stage 4 | Validate config
+  import_tasks: 01_validate_config.yml
+
+- name: Stage 4 | Prepare email
+  import_tasks: 02_prepare_email.yml
+
+- name: Stage 4 | Send email
+  import_tasks: 03_send.yml
+
+- name: Stage 4 | Verify delivery
+  import_tasks: 04_verify.yml

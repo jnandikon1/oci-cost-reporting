@@ -1,0 +1,57 @@
+---
+# Validate prerequisites for OCI inventory collection
+
+- name: Ensure data directory exists
+  file:
+    path: "{{ data_dir }}"
+    state: directory
+    mode: '0755'
+  tags:
+    - collect-inventory
+    - validate
+
+- name: Validate OCI profile is set
+  assert:
+    that:
+      - oci_profile is defined
+      - oci_profile | length > 0
+    fail_msg: "OCI profile must be defined. Set OCI_PROFILE environment variable or configure in inventory."
+  tags:
+    - collect-inventory
+    - validate
+
+- name: Check OCI config file exists
+  stat:
+    path: "{{ oci_config_file }}"
+  register: oci_config_stat
+  failed_when: not oci_config_stat.stat.exists
+  tags:
+    - collect-inventory
+    - validate
+
+- name: Validate Python scripts exist
+  stat:
+    path: "{{ scripts_dir }}/{{ item }}"
+  register: script_stat
+  loop:
+    - adb_inventory.py
+    - non_adb_infra_inventory.py
+  failed_when: not script_stat.stat.exists
+  tags:
+    - collect-inventory
+    - validate
+
+- name: Check Python interpreter available
+  shell: "{{ python_interpreter }} --version"
+  register: python_version
+  changed_when: false
+  tags:
+    - collect-inventory
+    - validate
+
+- name: Display validation status
+  debug:
+    msg: "✓ All prerequisites validated successfully. Python {{ python_version.stdout }}"
+  tags:
+    - collect-inventory
+    - validate

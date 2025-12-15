@@ -1,0 +1,10 @@
+---
+# Master playbook: oci-reporting-Hourly.yml
+# Runs hourly reporting pipeline across all database types and stores into dedicated table.
+
+- hosts: localhost
+  gather_facts: yes
+  vars_files:
+    - vars/common.yml
+  roles:
+    - role: oci-reporting-hourly

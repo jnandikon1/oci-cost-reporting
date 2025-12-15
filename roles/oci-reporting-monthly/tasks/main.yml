@@ -1,0 +1,25 @@
+---
+# Monthly reporting pipeline
+# Placeholder tasks to collect all database types and store into the dedicated monthly table.
+
+- name: Set reporting context
+  set_fact:
+    reporting_interval: monthly
+    reporting_table: "{{ oci_reporting_monthly_table }}"
+
+- name: TODO Collect usage/inventory across all database types (monthly)
+  debug:
+    msg: >-
+      Collect OCPU/usage/inventory data for all database types (ADB, non-ADB, GG, OEM, OID, OKV, etc.),
+      aggregated for monthly cadence. Feed results to staging for {{ reporting_table }}.
+
+- name: TODO Persist monthly dataset to ADW
+  debug:
+    msg: >-
+      Load transformed monthly dataset into table {{ reporting_table }} using shared ADW connection
+      (see vars/common.yml). Align with Oracle sample: usage-reports-to-adw scheduling guidance.
+
+- name: TODO Generate and distribute monthly report
+  debug:
+    msg: >-
+      Generate monthly report artifacts (CSV/Excel) and distribute via configured channel if required.

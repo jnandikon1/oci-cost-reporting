@@ -1,0 +1,10 @@
+---
+# Root playbook: oci-reporting-daily.yml
+# Orchestrates the four-stage OCI reporting pipeline via single role
+
+- hosts: localhost
+  gather_facts: yes
+  vars_files:
+    - vars/common.yml
+  roles:
+    - role: oci-reporting-daily

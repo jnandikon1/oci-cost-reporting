@@ -1,0 +1,86 @@
+---
+# Execute Excel report generation scripts for ADB and Non-ADB inventories
+
+- name: Create reports directory if missing
+  file:
+    path: "{{ reports_dir }}"
+    state: directory
+    mode: '0755'
+  tags:
+    - generate-reports
+
+- name: Generate ADB Excel report
+  shell: |
+    python3 "{{ scripts_dir }}/adb_inventory_to_excel.py" \
+      --input "{{ adb_csv_file }}" \
+      --output "{{ reports_dir }}/adb_inventory_report_{{ execution_timestamp }}.xlsx"
+  register: adb_report_generation
+  environment:
+    PYTHONPATH: "{{ scripts_dir }}"
+  changed_when: adb_report_generation.rc == 0
+  tags:
+    - generate-reports
+    - adb-reports
+
+- name: Log ADB report generation output
+  debug:
+    msg: "{{ adb_report_generation.stdout }}"
+  when: adb_report_generation.stdout | length > 0
+  tags:
+    - generate-reports
+    - adb-reports
+
+- name: Assert ADB report generated successfully
+  assert:
+    that:
+      - adb_report_generation.rc == 0
+    fail_msg: |
+      ADB report generation failed with exit code {{ adb_report_generation.rc }}
+      Error: {{ adb_report_generation.stderr | default('No error message') }}
+    success_msg: "✓ ADB report generated successfully"
+  tags:
+    - generate-reports
+    - adb-reports
+
+- name: Generate Non-ADB Excel report
+  shell: |
+    python3 "{{ scripts_dir }}/non_adb_inventory_to_excel.py" \
+      --input "{{ non_adb_csv_file }}" \
+      --output "{{ reports_dir }}/non_adb_inventory_report_{{ execution_timestamp }}.xlsx"
+  register: non_adb_report_generation
+  environment:
+    PYTHONPATH: "{{ scripts_dir }}"
+  changed_when: non_adb_report_generation.rc == 0
+  tags:
+    - generate-reports
+    - non-adb-reports
+
+- name: Log Non-ADB report generation output
+  debug:
+    msg: "{{ non_adb_report_generation.stdout }}"
+  when: non_adb_report_generation.stdout | length > 0
+  tags:
+    - generate-reports
+    - non-adb-reports
+
+- name: Assert Non-ADB report generated successfully
+  assert:
+    that:
+      - non_adb_report_generation.rc == 0
+    fail_msg: |
+      Non-ADB report generation failed with exit code {{ non_adb_report_generation.rc }}
+      Error: {{ non_adb_report_generation.stderr | default('No error message') }}
+    success_msg: "✓ Non-ADB report generated successfully"
+  tags:
+    - generate-reports
+    - non-adb-reports
+
+- name: Display report generation completion
+  debug:
+    msg: |
+      ✓ Excel Reports Generated:
+        ADB Report: adb_inventory_report_{{ execution_timestamp }}.xlsx
+        Non-ADB Report: non_adb_inventory_report_{{ execution_timestamp }}.xlsx
+        Location: {{ reports_dir }}
+  tags:
+    - generate-reports

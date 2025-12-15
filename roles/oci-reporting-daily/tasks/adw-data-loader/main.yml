@@ -1,0 +1,20 @@
+---
+# Stage 2: Persist - reference existing role task files
+
+- name: Stage 2 | Set facts
+  import_tasks: set_facts.yml
+
+- name: Stage 2 | Validate Wallet
+  import_tasks: 01_validate_wallet.yml
+
+- name: Stage 2 | Retrieve Credentials
+  import_tasks: 02_retrieve_credentials.yml
+
+- name: Stage 2 | Generate Loader
+  import_tasks: 03_generate_loader.yml
+
+- name: Stage 2 | Load Data
+  import_tasks: 04_load_data.yml
+
+- name: Stage 2 | Verify
+  import_tasks: 05_verify.yml

@@ -1,0 +1,195 @@
+---
+###############################################################################
+# Common Variables - Used by ALL master playbooks:
+#   oci-reporting-hourly.yml
+#   oci-reporting-daily.yml
+#   oci-reporting-weekly.yml
+#   oci-reporting-monthly.yml
+#   oci-reporting-yearly.yml
+###############################################################################
+
+###############################################################################
+# 0) Execution / Runtime
+###############################################################################
+report_period: "{{ report_period | default('HOURLY') }}"   # HOURLY/DAILY/WEEKLY/MONTHLY/YEARLY
+oci_profile: "{{ lookup('env','OCI_PROFILE') | default('DEFAULT', true) }}"
+oci_config_file: "{{ lookup('env','OCI_CONFIG_FILE') | default(lookup('env','HOME') + '/.oci/config', true) }}"
+
+# Use venv Python if available (recommended), otherwise system python3
+python_interpreter: >-
+  {{ lookup('env','PYTHON_INTERPRETER')
+     | default('/export/home/oracle/oci-reporting-venv/bin/python', true) }}
+
+# If your environment uses /export/home/oracle as HOME, this keeps paths consistent
+home_dir: "{{ lookup('env','HOME') | default('/export/home/oracle', true) }}"
+
+# Timestamp formats
+execution_timestamp: "{{ ansible_date_time.iso8601_basic_short | default('') }}"
+ts_ymd_hm: "{{ ansible_date_time.iso8601_basic | default('') }}"
+ts_file: "{{ ansible_date_time.iso8601_basic_short | default('') }}"
+
+###############################################################################
+# 1) Standard Repo Paths (relative to where playbook runs)
+###############################################################################
+project_base_dir: "{{ lookup('env','PROJECT_BASE_DIR') | default(playbook_dir, true) }}"
+data_dir:   "{{ project_base_dir }}/data"
+reports_dir: "{{ project_base_dir }}/reports"
+logs_dir:   "{{ project_base_dir }}/logs"
+scripts_dir: "{{ project_base_dir }}/scripts"
+tmp_dir:    "{{ lookup('env','TMPDIR') | default('/tmp', true) }}"
+
+# Common patterns
+adb_csv_pattern: "adb_inventory_*.csv"
+non_adb_csv_pattern: "non_adb_infra_inventory_*.csv"
+cpu_metrics_csv_pattern: "adb_cpu_metrics_24h_*.csv"
+
+adb_report_pattern: "adb_inventory_report_*.xlsx"
+non_adb_report_pattern: "non_adb_inventory_report_*.xlsx"
+
+###############################################################################
+# 2) “All DB Types” Scope Switches
+#    (These map to your existing cost/OCPU process categories)
+###############################################################################
+collect_exacc: true        # ExaCC VM Clusters (OCI VM Cluster GET calls)
+collect_goldengate: true   # GoldenGate deployments (OCI GG deployment GET calls)
+collect_okv: true          # OKV compute instances
+collect_oem_app: true      # OEM application compute instances
+collect_oem_db: true       # OEM database systems
+collect_oid_prod: true     # OID prod instances
+collect_oid_recovery: true # OID recovery instances
+collect_oid_dev: true      # OID dev instances
+
+# OCI ADB inventory pipeline (your new python/ADW approach)
+collect_adb_inventory: true
+collect_non_adb_inventory: true    # OCI-registered non-ADB (VM clusters, DB systems) - may be empty in some tenancies
+collect_adb_cpu_metrics_24h: false # enable only if you want Monitoring utilization data
+
+###############################################################################
+# 3) Dedicated Tables per Cadence (your requirement)
+#    These are "final destination" tables for each master playbook.
+###############################################################################
+tables:
+  hourly:  "OCI_COST_HOURLY"
+  daily:   "OCI_COST_DAILY"
+  weekly:  "OCI_COST_WEEKLY"
+  monthly: "OCI_COST_MONTHLY"
+  yearly:  "OCI_COST_YEARLY"
+
+target_table: >-
+  {{
+    (tables[report_period | lower] | default(tables.daily))
+  }}
+
+###############################################################################
+# 4) OEM Repository DB (existing process)
+###############################################################################
+# OEM repository schema/user and DB service
+oem_repo_user: "etc_repository"
+oem_repo_db_service: "OAITERP"
+
+# Password should NOT be hardcoded. Use env or Tower survey.
+oem_repo_password: "{{ lookup('env','ETC_REPOSITORY_PASSWORD') | default('', true) }}"
+
+# Library path used in existing roles
+oracle_ld_library_path: "/oracle/product/zdmhome/lib"
+
+# Where legacy jobs store files (from your current roles)
+legacy_working_dir: "/export/home/oracle/OCPU-DATA"
+legacy_save_dir_reports: "/dbutil/oracle/oci/ocpu/reports"
+legacy_save_dir_data: "/dbutil/oracle/oci/ocpu/data"
+legacy_report_dir: "/dbutil/oracle/oci/ocpu"
+
+# Report type handling used by your current daily report role
+report_format: "{{ lookup('env','REPORT_FORMAT') | default('HTML', true) }}"  # HTML or SQL
+
+###############################################################################
+# 5) Existing “Cost Model” Multipliers (contract-based)
+#    These are the rates used in the SQL/HTML OCPU reporting templates.
+#    Keep them centralized here.
+###############################################################################
+rates:
+  exacc: 0.7527
+  goldengate: 1.2097
+  okv: 0.0574
+  oem_application: 0.0225
+  oem_database: 0.3871
+  oid_application: 0.0225
+  other_consistent_charges_daily: 21.31
+
+# Daily maximum cost target (used in templates to show over/under)
+daily_max_cost_target: "{{ lookup('env','DAILY_MAX_COST_TARGET') | default('0', true) }}"
+
+# Date offset used by existing SQL templates (sysdate - N)
+# Example: 1 means “yesterday”
+report_day_offset: "{{ lookup('env','REPORT_DAY_OFFSET') | default('1', true) | int }}"
+
+###############################################################################
+# 6) OCI Usage API / Usage Reports → ADW (oracle-samples usage-reports-to-adw style)
+#    This section matches the scheduling concept:
+#    - OCI generates usage reports (daily/monthly)
+#    - you load/aggregate into ADW tables
+###############################################################################
+use_usage_api: false   # enable only if approved; this is finance-grade
+usage_granularity: "DAILY"  # DAILY or MONTHLY
+usage_currency: "USD"
+
+# Tenant OCID for usage calls (required if use_usage_api is true)
+tenant_ocid: "{{ lookup('env','TENANT_OCID') | default('', true) }}"
+
+###############################################################################
+# 7) ADW Connection (for “store into dedicated table”)
+###############################################################################
+load_to_adw: true
+
+adw_wallet_path: "{{ lookup('env','ADW_WALLET_PATH') | default(home_dir + '/ADWCUSG', true) }}"
+adw_user: "{{ lookup('env','ADW_USER') | default('USAGE', true) }}"
+adw_password: "{{ lookup('env','ADW_PASSWORD') | default('', true) }}"
+adw_connection_name: "{{ lookup('env','ADW_CONNECTION_NAME') | default('ADWCUSG_low', true) }}"
+adw_connection_string: "{{ lookup('env','ADW_CONNECTION_STRING') | default(adw_connection_name, true) }}"
+
+# Optional Vault support (leave false unless approved/configured)
+adw_use_vault: false
+adw_vault_secret_id: "{{ lookup('env','ADW_SECRET_ID') | default('', true) }}"
+
+###############################################################################
+# 8) Email (common across all cadences)
+###############################################################################
+email_enabled: true
+
+email_from: "{{ lookup('env','MAIL_FROM_EMAIL') | default('oci-reports@company.com', true) }}"
+email_to: "{{ lookup('env','MAIL_TO') | default('infrastructure-team@company.com', true) }}"
+email_cc: "{{ lookup('env','MAIL_CC') | default('', true) }}"
+smtp_host: "{{ lookup('env','MAIL_SMTP_HOST') | default('localhost', true) }}"
+smtp_port: "{{ lookup('env','MAIL_SMTP_PORT') | default('25', true) | int }}"
+
+email_subject_prefix: "OCI Reporting"
+email_subject: >-
+  {{ email_subject_prefix }} - {{ report_period }} - {{ ansible_date_time.iso8601_basic_short | default('') }}
+
+# Attachments behavior
+attach_reports: true
+max_reports_to_attach: 5
+max_attachment_size_mb: 25
+
+###############################################################################
+# 9) Cleanup / Retention
+###############################################################################
+cleanup_enabled: true
+cleanup_paths:
+  - "{{ logs_dir }}"
+  - "{{ tmp_dir }}"
+# Keep last N days of logs/reports
+retain_logs_days: 14
+retain_reports_days: 30
+
+###############################################################################
+# 10) Safety & Logging
+###############################################################################
+verbose_logging: false
+log_level: "INFO"
+
+# Hard stop timeouts (seconds)
+inventory_collection_timeout: 600
+excel_generation_timeout: 600
+adw_load_timeout: 900
+email_send_timeout: 300

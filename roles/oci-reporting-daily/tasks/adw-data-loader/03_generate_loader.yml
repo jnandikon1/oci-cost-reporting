@@ -1,0 +1,64 @@
+---
+# Generate database_loader.py from Jinja2 template with current environment
+
+- name: Create templates directory if missing
+  file:
+    path: "{{ role_path }}/templates"
+    state: directory
+    mode: '0755'
+  tags:
+    - load-database
+    - generate-loader
+
+- name: Generate database_loader.py from template
+  template:
+    src: "{{ role_path }}/templates/database_loader.py.j2"
+    dest: "/tmp/database_loader_{{ execution_timestamp }}.py"
+    mode: '0755'
+  register: loader_generated
+  vars:
+    loader_output_file: "/tmp/database_loader_{{ execution_timestamp }}.py"
+  tags:
+    - load-database
+    - generate-loader
+
+- name: Validate generated Python script syntax
+  shell: |
+    python3 -m py_compile "{{ loader_generated.dest }}"
+  register: syntax_check
+  changed_when: false
+  tags:
+    - load-database
+    - generate-loader
+
+- name: Assert loader script generated successfully
+  assert:
+    that:
+      - loader_generated is changed or loader_generated is succeeded
+      - syntax_check.rc == 0
+    fail_msg: "Failed to generate database_loader.py or syntax error detected"
+    success_msg: "✓ Database loader script generated successfully"
+  tags:
+    - load-database
+    - generate-loader
+
+- name: Display generated loader information
+  debug:
+    msg: |
+      ✓ Database Loader Generated:
+        File: {{ loader_generated.dest }}
+        Size: {{ loader_generated.dest | stat | map(attribute='size') | first }} bytes
+        Syntax: Valid (Python {{ python_version }})
+        Timestamp: {{ execution_timestamp }}
+  vars:
+    python_version: "{{ ansible_python_version | default('unknown') }}"
+  tags:
+    - load-database
+    - generate-loader
+
+- name: Set loader path in facts
+  set_fact:
+    database_loader_script: "{{ loader_generated.dest }}"
+  tags:
+    - load-database
+    - generate-loader

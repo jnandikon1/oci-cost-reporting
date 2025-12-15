@@ -1,0 +1,78 @@
+---
+# Verify OCI inventory collection output
+
+- name: Find latest ADB inventory CSV
+  find:
+    paths: "{{ data_dir }}"
+    patterns: "{{ adb_csv_pattern }}"
+    file_type: file
+  register: adb_csv_files
+  tags:
+    - collect-inventory
+    - validate
+
+- name: Find latest Non-ADB inventory CSV
+  find:
+    paths: "{{ data_dir }}"
+    patterns: "{{ non_adb_csv_pattern }}"
+    file_type: file
+  register: non_adb_csv_files
+  tags:
+    - collect-inventory
+    - validate
+
+- name: Validate ADB CSV exists
+  assert:
+    that:
+      - adb_csv_files.files | length > 0
+    fail_msg: "No ADB inventory CSV file found in {{ data_dir }}"
+  tags:
+    - collect-inventory
+    - validate
+
+- name: Validate Non-ADB CSV exists
+  assert:
+    that:
+      - non_adb_csv_files.files | length > 0
+    fail_msg: "No Non-ADB inventory CSV file found in {{ data_dir }}"
+  tags:
+    - collect-inventory
+    - validate
+
+- name: Check ADB CSV file size
+  stat:
+    path: "{{ adb_csv_files.files | sort(attribute='mtime', reverse=True) | first | map(attribute='path') | first }}"
+  register: adb_csv_stat
+  tags:
+    - collect-inventory
+    - validate
+
+- name: Check Non-ADB CSV file size
+  stat:
+    path: "{{ non_adb_csv_files.files | sort(attribute='mtime', reverse=True) | first | map(attribute='path') | first }}"
+  register: non_adb_csv_stat
+  tags:
+    - collect-inventory
+    - validate
+
+- name: Display CSV file information
+  debug:
+    msg: |
+      ✓ ADB Inventory CSV: {{ adb_csv_files.files | sort(attribute='mtime', reverse=True) | first | map(attribute='path') | first }}
+        Size: {{ adb_csv_stat.stat.size }} bytes
+      
+      ✓ Non-ADB Inventory CSV: {{ non_adb_csv_files.files | sort(attribute='mtime', reverse=True) | first | map(attribute='path') | first }}
+        Size: {{ non_adb_csv_stat.stat.size }} bytes
+  tags:
+    - collect-inventory
+    - validate
+
+- name: Verify CSV files are not empty
+  assert:
+    that:
+      - adb_csv_stat.stat.size > 100
+      - non_adb_csv_stat.stat.size > 100
+    fail_msg: "CSV files are too small. Possible empty inventory results."
+  tags:
+    - collect-inventory
+    - validate

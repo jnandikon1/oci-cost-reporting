@@ -1,0 +1,86 @@
+---
+# Execute database loader to populate ADW tables
+
+- name: Find latest CSV files from inventory collection
+  find:
+    paths: "{{ data_dir }}"
+    patterns: "{{ item }}"
+    file_type: file
+  register: csv_files
+  loop:
+    - "adb_inventory_*.csv"
+    - "non_adb_infra_inventory_*.csv"
+  tags:
+    - load-database
+    - load-data
+
+- name: Assert CSV files exist for loading
+  assert:
+    that:
+      - csv_files.results[0].files | length > 0
+      - csv_files.results[1].files | length > 0
+    fail_msg: "CSV inventory files not found in {{ data_dir }}"
+    success_msg: "✓ CSV files ready for loading"
+  tags:
+    - load-database
+    - load-data
+
+- name: Set latest CSV file paths
+  set_fact:
+    latest_adb_csv: "{{ (csv_files.results[0].files | sort(attribute='mtime', reverse=True) | first).path }}"
+    latest_non_adb_csv: "{{ (csv_files.results[1].files | sort(attribute='mtime', reverse=True) | first).path }}"
+  tags:
+    - load-database
+    - load-data
+
+- name: Execute database loader script
+  shell: |
+    export TNS_ADMIN="{{ adw_wallet_path }}"
+    export ORACLE_HOME="{{ oracle_home | default('/opt/oracle') }}"
+    python3 "{{ database_loader_script }}" \
+      --adb-csv "{{ latest_adb_csv }}" \
+      --non-adb-csv "{{ latest_non_adb_csv }}" \
+      --connection "{{ adw_connection_string }}" \
+      --user "{{ adw_user }}"
+  register: loader_execution
+  environment:
+    ADW_PASSWORD: "{{ adw_password }}"
+    TNS_ADMIN: "{{ adw_wallet_path }}"
+    ORACLE_HOME: "{{ oracle_home | default('/opt/oracle') }}"
+  changed_when: loader_execution.rc == 0
+  tags:
+    - load-database
+    - load-data
+
+- name: Log database load results
+  debug:
+    msg: "{{ loader_execution.stdout }}"
+  when: loader_execution.stdout | length > 0
+  tags:
+    - load-database
+    - load-data
+
+- name: Assert data load succeeded
+  assert:
+    that:
+      - loader_execution.rc == 0
+    fail_msg: |
+      Database loader failed with exit code {{ loader_execution.rc }}
+      Error: {{ loader_execution.stderr | default('No error message') }}
+    success_msg: "✓ Data loaded to ADW successfully"
+  tags:
+    - load-database
+    - load-data
+
+- name: Display load execution summary
+  debug:
+    msg: |
+      ✓ Data Load Completed:
+        ADB CSV: {{ latest_adb_csv | basename }}
+        Non-ADB CSV: {{ latest_non_adb_csv | basename }}
+        Connection: {{ adw_connection_string }}
+        User: {{ adw_user }}
+        Status: SUCCESS
+  tags:
+    - load-database
+    - load-data

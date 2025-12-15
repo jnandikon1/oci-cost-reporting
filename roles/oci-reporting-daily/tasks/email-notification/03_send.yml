@@ -1,0 +1,116 @@
+---
+# Build and send email with report attachments
+
+- name: Build email with MIME attachments
+  shell: |
+    python3 << 'EOFPYTHON'
+    import mimetypes
+    import os
+    from pathlib import Path
+    import base64
+    
+    # Prepare email headers
+    from_addr = "{{ email_from }}"
+    to_addrs = "{{ email_recipients | join(';') }}"
+    subject = "{{ email_subject }}"
+    
+    # Start building email
+    email_parts = []
+    email_parts.append(f"From: {from_addr}")
+    email_parts.append(f"To: {to_addrs}")
+    email_parts.append(f"Subject: {subject}")
+    email_parts.append("MIME-Version: 1.0")
+    email_parts.append("Content-Type: multipart/mixed; boundary=\"===============BOUNDARY===============\"")
+    email_parts.append("")
+    
+    # Add text body
+    email_parts.append("--===============BOUNDARY===============")
+    email_parts.append("Content-Type: text/plain; charset=\"UTF-8\"")
+    email_parts.append("Content-Transfer-Encoding: 7bit")
+    email_parts.append("")
+    email_parts.append("""{{ email_message_body }}""")
+    email_parts.append("")
+    
+    # Add attachments
+    {% for attachment in email_attachments %}
+    email_parts.append("--===============BOUNDARY===============")
+    email_parts.append("Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+    email_parts.append("Content-Disposition: attachment; filename=\"{{ attachment | basename }}\"")
+    email_parts.append("Content-Transfer-Encoding: base64")
+    email_parts.append("")
+    with open("{{ attachment }}", "rb") as f:
+        data = base64.b64encode(f.read()).decode()
+        for i in range(0, len(data), 76):
+            email_parts.append(data[i:i+76])
+    email_parts.append("")
+    {% endfor %}
+    
+    email_parts.append("--===============BOUNDARY===============--")
+    
+    # Write to temp file
+    with open("/tmp/email_message_{{ execution_timestamp }}.eml", "w") as f:
+        f.write("\n".join(email_parts))
+    
+    print("Email message prepared")
+    EOFPYTHON
+  register: email_build_result
+  environment:
+    email_message_body: "{{ email_message_body }}"
+  tags:
+    - email-notification
+    - send-email
+
+- name: Send email using mail command
+  shell: |
+    sendmail << 'EOF'
+    From: {{ email_from }}
+    To: {{ email_recipients | join(',') }}
+    Subject: {{ email_subject }}
+    MIME-Version: 1.0
+    Content-Type: multipart/mixed; boundary="===============BOUNDARY==============="
+    
+    --===============BOUNDARY===============
+    Content-Type: text/plain; charset="UTF-8"
+    Content-Transfer-Encoding: 7bit
+    
+    {{ email_message_body }}
+    
+    {% for attachment in email_attachments %}
+    --===============BOUNDARY===============
+    Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet
+    Content-Disposition: attachment; filename="{{ attachment | basename }}"
+    Content-Transfer-Encoding: base64
+    
+    {% endfor %}
+    --===============BOUNDARY===============--
+    EOF
+  register: sendmail_result
+  changed_when: sendmail_result.rc == 0
+  tags:
+    - email-notification
+    - send-email
+
+- name: Log email send results
+  debug:
+    msg: |
+      ✓ Email Sent:
+        From: {{ email_from }}
+        To: {{ email_recipients | join(', ') }}
+        Subject: {{ email_subject }}
+        Attachments: {{ attachment_count }}
+        Send Timestamp: {{ ansible_date_time.iso8601 }}
+  tags:
+    - email-notification
+    - send-email
+
+- name: Assert email sent successfully
+  assert:
+    that:
+      - sendmail_result.rc == 0
+    fail_msg: |
+      Email send failed with exit code {{ sendmail_result.rc }}
+      Error: {{ sendmail_result.stderr | default('No error message') }}
+    success_msg: "✓ Email delivery initiated successfully"
+  tags:
+    - email-notification
+    - send-email

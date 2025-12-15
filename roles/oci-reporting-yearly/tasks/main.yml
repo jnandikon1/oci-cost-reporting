@@ -1,0 +1,25 @@
+---
+# Yearly reporting pipeline
+# Placeholder tasks to collect all database types and store into the dedicated yearly table.
+
+- name: Set reporting context
+  set_fact:
+    reporting_interval: yearly
+    reporting_table: "{{ oci_reporting_yearly_table }}"
+
+- name: TODO Collect usage/inventory across all database types (yearly)
+  debug:
+    msg: >-
+      Collect OCPU/usage/inventory data for all database types (ADB, non-ADB, GG, OEM, OID, OKV, etc.),
+      aggregated for yearly cadence. Feed results to staging for {{ reporting_table }}.
+
+- name: TODO Persist yearly dataset to ADW
+  debug:
+    msg: >-
+      Load transformed yearly dataset into table {{ reporting_table }} using shared ADW connection
+      (see vars/common.yml). Align with Oracle sample: usage-reports-to-adw scheduling guidance.
+
+- name: TODO Generate and distribute yearly report
+  debug:
+    msg: >-
+      Generate yearly report artifacts (CSV/Excel) and distribute via configured channel if required.

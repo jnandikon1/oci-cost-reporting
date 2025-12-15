@@ -1,0 +1,14 @@
+---
+# Stage 1: Collect - reference existing role task files
+
+- name: Stage 1 | Set facts
+  import_tasks: set_facts.yml
+
+- name: Stage 1 | Validate
+  import_tasks: 01_validate.yml
+
+- name: Stage 1 | Execute
+  import_tasks: 02_execute.yml
+
+- name: Stage 1 | Verify
+  import_tasks: 03_verify.yml

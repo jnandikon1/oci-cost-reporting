@@ -1,0 +1,22 @@
+---
+# Calls Each Tasks (ex: Stage-1, Stage-2 etc..)
+
+- name: Load playbook facts
+  include_tasks: set_facts.yml
+
+- name: Stage 1 Collect - oci-inventory-collection
+  import_tasks: oci-inventory-collection/main.yml
+
+- name: Stage 2 Persist - adw-data-loader
+  import_tasks: adw-data-loader/main.yml
+
+- name: Stage 3 Report - excel-report-generator
+  import_tasks: excel-report-generator/main.yml
+
+- name: Stage 4 Distribute - email-notification
+  import_tasks: email-notification/main.yml
+
+- name: Finalize pipeline facts
+  set_fact:
+    pipeline_status: SUCCESS
+    pipeline_finished_at: "{{ ansible_date_time.iso8601 }}"

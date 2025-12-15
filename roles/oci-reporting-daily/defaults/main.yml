@@ -1,0 +1,73 @@
+---
+# Consolidated defaults for OCI reporting pipeline role
+# Variables merged from inventory collection, ADW loader, Excel generation, and email notification
+
+# Project directories
+project_base_dir: "{{ lookup('env', 'PROJECT_BASE_DIR') | default(playbook_dir, true) }}"
+data_dir: "{{ project_base_dir }}/data"
+scripts_dir: "{{ project_base_dir }}/scripts"
+reports_dir: "{{ project_base_dir }}/reports"
+logs_dir: "{{ project_base_dir }}/logs"
+
+# General
+python_interpreter: "{{ lookup('env', 'PYTHON_INTERPRETER') | default('/usr/bin/python3', true) }}"
+oci_profile: "{{ lookup('env', 'OCI_PROFILE') | default('DEFAULT', true) }}"
+oci_config_file: "{{ lookup('env', 'OCI_CONFIG_FILE') | default(lookup('env', 'HOME') + '/.oci/config', true) }}"
+execution_timestamp_format: "%Y%m%d_%H%M%S"
+
+# Inventory collection
+collect_adb_inventory: true
+collect_non_adb_inventory: true
+adb_inventory_script: adb_inventory.py
+non_adb_inventory_script: non_adb_infra_inventory.py
+csv_timestamp_format: "%Y%m%d_%H%M%S"
+adb_csv_pattern: "adb_inventory_*.csv"
+non_adb_csv_pattern: "non_adb_infra_inventory_*.csv"
+inventory_collection_timeout: 300
+
+# ADW loader
+load_to_adw: true
+adw_wallet_path: "{{ lookup('env', 'ADW_WALLET_PATH') | default(lookup('env', 'HOME') + '/ADWCUSG', true) }}"
+adw_user: "{{ lookup('env', 'ADW_USER') | default('USAGE', true) }}"
+adw_connection_name: "{{ lookup('env', 'ADW_CONNECTION_NAME') | default('ADWCUSG_low', true) }}"
+adw_connection_string: "{{ lookup('env', 'ADW_CONNECTION_STRING') | default(adw_connection_name, true) }}"
+adw_password: "{{ lookup('env', 'ADW_PASSWORD') | default('', true) }}"
+adw_use_vault: false
+adw_vault_secret_id: "{{ lookup('env', 'ADW_SECRET_ID') | default('', true) }}"
+test_adw_connection: false
+oracle_home: "{{ lookup('env', 'ORACLE_HOME') | default('/opt/oracle', true) }}"
+
+# Excel report generation
+generate_excel_reports: true
+excel_generation_timeout: 300
+adb_excel_script: adb_inventory_to_excel.py
+non_adb_excel_script: non_adb_inventory_to_excel.py
+excel_timestamp_format: "%Y%m%d_%H%M%S"
+
+# Email notification
+send_email_reports: true
+email_enabled: "{{ send_email_reports }}"
+mail_from_email: "{{ lookup('env', 'MAIL_FROM_EMAIL') | default('oci-reports@company.com', true) }}"
+mail_to: "{{ lookup('env', 'MAIL_TO') | default('infrastructure-team@company.com', true) }}"
+mail_cc: "{{ lookup('env', 'MAIL_CC') | default('', true) }}"
+mail_bcc: "{{ lookup('env', 'MAIL_BCC') | default('', true) }}"
+mail_subject: "OCI Infrastructure Daily Report - {{ ansible_date_time.iso8601_basic_short | default('') }}"
+mail_body_template: email_body.txt.j2
+mail_smtp_host: "{{ lookup('env', 'MAIL_SMTP_HOST') | default('localhost', true) }}"
+mail_smtp_port: "{{ lookup('env', 'MAIL_SMTP_PORT') | default(25, true) }}"
+mail_smtp_user: "{{ lookup('env', 'MAIL_SMTP_USER') | default('', true) }}"
+mail_smtp_password: "{{ lookup('env', 'MAIL_SMTP_PASSWORD') | default('', true) }}"
+use_oci_email_delivery: true
+smtp_host: "{{ mail_smtp_host }}"
+smtp_port: "{{ mail_smtp_port }}"
+email_from: "{{ mail_from_email }}"
+email_recipients: "{{ mail_to.split(',') | map('trim') | reject('equalto', '') | list }}"
+email_subject: "{{ mail_subject }}"
+report_file_pattern: "*_report_*.xlsx"
+attach_reports: true
+max_reports_to_attach: 2
+max_attachment_size_mb: 25
+
+# Misc
+verbose_logging: false
+log_level: INFO

@@ -1,0 +1,25 @@
+---
+# Weekly reporting pipeline
+# Placeholder tasks to collect all database types and store into the dedicated weekly table.
+
+- name: Set reporting context
+  set_fact:
+    reporting_interval: weekly
+    reporting_table: "{{ oci_reporting_weekly_table }}"
+
+- name: TODO Collect usage/inventory across all database types (weekly)
+  debug:
+    msg: >-
+      Collect OCPU/usage/inventory data for all database types (ADB, non-ADB, GG, OEM, OID, OKV, etc.),
+      aggregated for weekly cadence. Feed results to staging for {{ reporting_table }}.
+
+- name: TODO Persist weekly dataset to ADW
+  debug:
+    msg: >-
+      Load transformed weekly dataset into table {{ reporting_table }} using shared ADW connection
+      (see vars/common.yml). Align with Oracle sample: usage-reports-to-adw scheduling guidance.
+
+- name: TODO Generate and distribute weekly report
+  debug:
+    msg: >-
+      Generate weekly report artifacts (CSV/Excel) and distribute via configured channel if required.

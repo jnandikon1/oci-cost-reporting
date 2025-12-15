@@ -1,0 +1,81 @@
+---
+# Execute OCI inventory collection scripts
+
+- name: Copy ADB inventory script to /tmp
+  copy:
+    src: "{{ scripts_dir }}/adb_inventory.py"
+    dest: "/tmp/adb_inventory.py"
+    mode: '0755'
+  tags:
+    - collect-inventory
+    - adb-collection
+
+- name: Copy Non-ADB inventory script to /tmp
+  copy:
+    src: "{{ scripts_dir }}/non_adb_infra_inventory.py"
+    dest: "/tmp/non_adb_infra_inventory.py"
+    mode: '0755'
+  tags:
+    - collect-inventory
+    - non-adb-collection
+
+- name: Execute ADB inventory collection
+  shell: |
+    export OCI_PROFILE={{ oci_profile }}
+    {{ python_interpreter }} /tmp/adb_inventory.py
+  args:
+    chdir: "{{ project_base_dir }}"
+  environment:
+    OCI_PROFILE: "{{ oci_profile }}"
+    PATH: "{{ ansible_env.PATH }}"
+  register: adb_collection_result
+  timeout: "{{ inventory_collection_timeout }}"
+  tags:
+    - collect-inventory
+    - adb-collection
+
+- name: Execute Non-ADB inventory collection
+  shell: |
+    export OCI_PROFILE={{ oci_profile }}
+    {{ python_interpreter }} /tmp/non_adb_infra_inventory.py
+  args:
+    chdir: "{{ project_base_dir }}"
+  environment:
+    OCI_PROFILE: "{{ oci_profile }}"
+    PATH: "{{ ansible_env.PATH }}"
+  register: non_adb_collection_result
+  timeout: "{{ inventory_collection_timeout }}"
+  tags:
+    - collect-inventory
+    - non-adb-collection
+
+- name: Display ADB collection output
+  debug:
+    msg: "{{ adb_collection_result.stdout }}"
+  when: adb_collection_result.stdout | length > 0
+  tags:
+    - collect-inventory
+    - adb-collection
+
+- name: Display Non-ADB collection output
+  debug:
+    msg: "{{ non_adb_collection_result.stdout }}"
+  when: non_adb_collection_result.stdout | length > 0
+  tags:
+    - collect-inventory
+    - non-adb-collection
+
+- name: Check for collection errors
+  assert:
+    that:
+      - adb_collection_result.rc == 0
+      - non_adb_collection_result.rc == 0
+    fail_msg: "Inventory collection failed. Check logs for details."
+  tags:
+    - collect-inventory
+
+- name: Display collection completion
+  debug:
+    msg: "✓ OCI inventory collection completed successfully"
+  tags:
+    - collect-inventory

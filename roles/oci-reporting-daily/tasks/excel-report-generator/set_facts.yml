@@ -1,0 +1,30 @@
+---
+# Centralize all facts and variables for Excel report generation stage
+
+- name: Set report generation status - initialized
+  set_fact:
+    report_generation_status: "IN_PROGRESS"
+    report_generation_start_timestamp: "{{ ansible_date_time.iso8601 }}"
+  tags:
+    - generate-reports
+
+- name: Set initial report file paths
+  set_fact:
+    adb_csv_file: ""
+    non_adb_csv_file: ""
+    adb_report_file: ""
+    non_adb_report_file: ""
+    report_file_count: 0
+  tags:
+    - generate-reports
+
+- name: Display report generation initialization
+  debug:
+    msg: |
+      ✓ Excel Report Generator Initialized:
+        Status: {{ report_generation_status }}
+        Start Time: {{ report_generation_start_timestamp }}
+        Data Directory: {{ data_dir }}
+        Output Directory: {{ reports_dir }}
+  tags:
+    - generate-reports

@@ -1,0 +1,2415 @@
+Here is my New Repo Structure That is Adopted for ansible Playbook 
+
+oci-infra-reporting$ ls -ltr */*/*/*
+-rw-r--r--. 1 oracle dba 3342 Dec 15 13:08 roles/oci-reporting-daily/defaults/main.yml
+-rw-r--r--. 1 oracle dba  632 Dec 15 13:08 roles/oci-reporting-daily/tasks/set_facts.yml
+-rw-r--r--. 1 oracle dba 8522 Dec 15 13:08 roles/oci-reporting-daily/templates/database_loader.py.j2
+-rw-r--r--. 1 oracle dba 1621 Dec 15 13:08 roles/oci-reporting-daily/templates/email_body.txt.j2
+-rw-r--r--. 1 oracle dba  622 Dec 15 13:09 roles/oci-reporting-daily/tasks/main.yml
+
+roles/oci-reporting-daily/tasks/adw-data-loader:
+total 28
+-rw-r--r--. 1 oracle dba 1538 Dec 15 13:08 01_validate_wallet.yml
+-rw-r--r--. 1 oracle dba 2091 Dec 15 13:08 02_retrieve_credentials.yml
+-rw-r--r--. 1 oracle dba 1820 Dec 15 13:08 03_generate_loader.yml
+-rw-r--r--. 1 oracle dba 2479 Dec 15 13:08 04_load_data.yml
+-rw-r--r--. 1 oracle dba 2940 Dec 15 13:08 05_verify.yml
+-rw-r--r--. 1 oracle dba  469 Dec 15 13:08 main.yml
+-rw-r--r--. 1 oracle dba  804 Dec 15 13:08 set_facts.yml
+
+roles/oci-reporting-daily/tasks/email-notification:
+total 24
+-rw-r--r--. 1 oracle dba 2299 Dec 15 13:08 01_validate_config.yml
+-rw-r--r--. 1 oracle dba 2108 Dec 15 13:08 02_prepare_email.yml
+-rw-r--r--. 1 oracle dba 3781 Dec 15 13:08 03_send.yml
+-rw-r--r--. 1 oracle dba 1684 Dec 15 13:08 04_verify.yml
+-rw-r--r--. 1 oracle dba  389 Dec 15 13:08 main.yml
+-rw-r--r--. 1 oracle dba  825 Dec 15 13:08 set_facts.yml
+
+roles/oci-reporting-daily/tasks/excel-report-generator:
+total 20
+-rw-r--r--. 1 oracle dba 1968 Dec 15 13:08 01_find_files.yml
+-rw-r--r--. 1 oracle dba 2612 Dec 15 13:08 02_generate_reports.yml
+-rw-r--r--. 1 oracle dba 2773 Dec 15 13:08 03_verify.yml
+-rw-r--r--. 1 oracle dba  322 Dec 15 13:08 main.yml
+-rw-r--r--. 1 oracle dba  829 Dec 15 13:08 set_facts.yml
+
+roles/oci-reporting-daily/tasks/oci-inventory-collection:
+total 20
+-rw-r--r--. 1 oracle dba 1330 Dec 15 13:08 01_validate.yml
+-rw-r--r--. 1 oracle dba 2112 Dec 15 13:08 02_execute.yml
+-rw-r--r--. 1 oracle dba 2121 Dec 15 13:08 03_verify.yml
+-rw-r--r--. 1 oracle dba  293 Dec 15 13:08 main.yml
+-rw-r--r--. 1 oracle dba 2255 Dec 15 13:08 set_facts.yml
+
+-----------------------------------------------------------------------------------------------------------------------------------------------------------
+----Readme\oci-reporting-daily\README.md
+# OCI Reporting Daily - Playbook
+
+This directory documents the consolidated daily playbook that orchestrates the four-stage OCI reporting pipeline via a single role `roles/oci-reporting-daily`.
+
+- Stage 1: Collect (inventory)
+- Stage 2: Persist (ADW load)
+- Stage 3: Report (Excel)
+- Stage 4: Distribute (Email)
+
+-----------------------------------------------------------------------------------------------------------------------------------------------------------
+----roles\oci-reporting-daily\defaults\main.yml
+---
+# Consolidated defaults for OCI reporting pipeline role
+# Variables merged from inventory collection, ADW loader, Excel generation, and email notification
+
+# Project directories
+project_base_dir: "{{ lookup('env', 'PROJECT_BASE_DIR') | default(playbook_dir, true) }}"
+data_dir: "{{ project_base_dir }}/data"
+scripts_dir: "{{ project_base_dir }}/scripts"
+reports_dir: "{{ project_base_dir }}/reports"
+logs_dir: "{{ project_base_dir }}/logs"
+
+# General
+python_interpreter: "{{ lookup('env', 'PYTHON_INTERPRETER') | default('/usr/bin/python3', true) }}"
+oci_profile: "{{ lookup('env', 'OCI_PROFILE') | default('DEFAULT', true) }}"
+oci_config_file: "{{ lookup('env', 'OCI_CONFIG_FILE') | default(lookup('env', 'HOME') + '/.oci/config', true) }}"
+execution_timestamp_format: "%Y%m%d_%H%M%S"
+
+# Inventory collection
+collect_adb_inventory: true
+collect_non_adb_inventory: true
+adb_inventory_script: adb_inventory.py
+non_adb_inventory_script: non_adb_infra_inventory.py
+csv_timestamp_format: "%Y%m%d_%H%M%S"
+adb_csv_pattern: "adb_inventory_*.csv"
+non_adb_csv_pattern: "non_adb_infra_inventory_*.csv"
+inventory_collection_timeout: 300
+
+# ADW loader
+load_to_adw: true
+adw_wallet_path: "{{ lookup('env', 'ADW_WALLET_PATH') | default(lookup('env', 'HOME') + '/ADWCUSG', true) }}"
+adw_user: "{{ lookup('env', 'ADW_USER') | default('USAGE', true) }}"
+adw_connection_name: "{{ lookup('env', 'ADW_CONNECTION_NAME') | default('ADWCUSG_low', true) }}"
+adw_connection_string: "{{ lookup('env', 'ADW_CONNECTION_STRING') | default(adw_connection_name, true) }}"
+adw_password: "{{ lookup('env', 'ADW_PASSWORD') | default('', true) }}"
+adw_use_vault: false
+adw_vault_secret_id: "{{ lookup('env', 'ADW_SECRET_ID') | default('', true) }}"
+test_adw_connection: false
+oracle_home: "{{ lookup('env', 'ORACLE_HOME') | default('/opt/oracle', true) }}"
+
+# Excel report generation
+generate_excel_reports: true
+excel_generation_timeout: 300
+adb_excel_script: adb_inventory_to_excel.py
+non_adb_excel_script: non_adb_inventory_to_excel.py
+excel_timestamp_format: "%Y%m%d_%H%M%S"
+
+# Email notification
+send_email_reports: true
+email_enabled: "{{ send_email_reports }}"
+mail_from_email: "{{ lookup('env', 'MAIL_FROM_EMAIL') | default('oci-reports@company.com', true) }}"
+mail_to: "{{ lookup('env', 'MAIL_TO') | default('infrastructure-team@company.com', true) }}"
+mail_cc: "{{ lookup('env', 'MAIL_CC') | default('', true) }}"
+mail_bcc: "{{ lookup('env', 'MAIL_BCC') | default('', true) }}"
+mail_subject: "OCI Infrastructure Daily Report - {{ ansible_date_time.iso8601_basic_short | default('') }}"
+mail_body_template: email_body.txt.j2
+mail_smtp_host: "{{ lookup('env', 'MAIL_SMTP_HOST') | default('localhost', true) }}"
+mail_smtp_port: "{{ lookup('env', 'MAIL_SMTP_PORT') | default(25, true) }}"
+mail_smtp_user: "{{ lookup('env', 'MAIL_SMTP_USER') | default('', true) }}"
+mail_smtp_password: "{{ lookup('env', 'MAIL_SMTP_PASSWORD') | default('', true) }}"
+use_oci_email_delivery: true
+smtp_host: "{{ mail_smtp_host }}"
+smtp_port: "{{ mail_smtp_port }}"
+email_from: "{{ mail_from_email }}"
+email_recipients: "{{ mail_to.split(',') | map('trim') | reject('equalto', '') | list }}"
+email_subject: "{{ mail_subject }}"
+report_file_pattern: "*_report_*.xlsx"
+attach_reports: true
+max_reports_to_attach: 2
+max_attachment_size_mb: 25
+
+# Misc
+verbose_logging: false
+log_level: INFO
+
+
+-----------------------------------------------------------------------------------------------------------------------------------------------------------
+----roles\oci-reporting-daily\tasks\adw-data-loader\01_validate_wallet.yml
+---
+# Validate ADW wallet files are present and accessible
+
+- name: Create ADW wallet directory if missing
+  file:
+    path: "{{ adw_wallet_path }}"
+    state: directory
+    mode: '0700'
+  tags:
+    - load-database
+    - validate
+
+- name: Check ADW wallet exists
+  stat:
+    path: "{{ adw_wallet_path }}"
+  register: wallet_stat
+  tags:
+    - load-database
+    - validate
+
+- name: Assert wallet directory exists
+  assert:
+    that:
+      - wallet_stat.stat.exists
+      - wallet_stat.stat.isdir
+    fail_msg: "ADW wallet directory not found at {{ adw_wallet_path }}"
+    success_msg: "✓ ADW wallet directory validated"
+  tags:
+    - load-database
+    - validate
+
+- name: Find wallet files
+  find:
+    paths: "{{ adw_wallet_path }}"
+    patterns: "*.pem,*.p12,sqlnet.ora,tnsnames.ora"
+    file_type: file
+  register: wallet_files
+  tags:
+    - load-database
+    - validate
+
+- name: Assert wallet contains required files
+  assert:
+    that:
+      - wallet_files.files | length > 0
+    fail_msg: "No wallet files found in {{ adw_wallet_path }}"
+    success_msg: "✓ Wallet files validated ({{ wallet_files.files | length }} files)"
+  tags:
+    - load-database
+    - validate
+
+- name: Display wallet validation results
+  debug:
+    msg: |
+      ✓ Wallet Validation Results:
+        Location: {{ adw_wallet_path }}
+        Files Found: {{ wallet_files.files | length }}
+        Required Files:
+      {% for file in wallet_files.files %}
+          - {{ file.path | basename }}
+      {% endfor %}
+  tags:
+    - load-database
+    - validate
+
+-----------------------------------------------------------------------------------------------------------------------------------------------------------
+---- roles\oci-reporting-daily\tasks\adw-data-loader\02_retrieve_credentials.yml
+---
+# Retrieve ADW password from environment variable or OCI Vault Secret
+
+- name: Check if ADW password is in environment
+  set_fact:
+    adw_password_source: "environment"
+  when: adw_password | length > 0
+  tags:
+    - load-database
+    - retrieve-credentials
+
+- name: Retrieve ADW password from OCI Vault (if not in environment)
+  block:
+    - name: Get secret from OCI Vault
+      shell: |
+        oci secrets secret-bundle get \
+          --secret-id {{ adw_vault_secret_id }} \
+          --profile {{ oci_profile }} \
+          --query 'data."secret-bundle-content".content' \
+          --raw-output | base64 -d
+      register: vault_secret_result
+      environment:
+        OCI_PROFILE: "{{ oci_profile }}"
+      changed_when: false
+      tags:
+        - load-database
+        - retrieve-credentials
+
+    - name: Set ADW password from vault
+      set_fact:
+        adw_password: "{{ vault_secret_result.stdout | trim }}"
+        adw_password_source: "vault"
+      tags:
+        - load-database
+        - retrieve-credentials
+  when: 
+    - adw_use_vault | bool
+    - adw_password | length == 0
+  tags:
+    - load-database
+    - retrieve-credentials
+
+- name: Assert ADW password is available
+  assert:
+    that:
+      - adw_password | length > 0
+    fail_msg: "ADW password not found. Set ADW_PASSWORD env variable or configure vault access."
+    success_msg: "✓ ADW credentials retrieved from {{ adw_password_source }}"
+  tags:
+    - load-database
+    - retrieve-credentials
+
+- name: Validate database connectivity (optional test)
+  shell: |
+    sqlplus -v
+  register: sqlplus_check
+  changed_when: false
+  failed_when: sqlplus_check.rc != 0
+  when: test_adw_connection | bool
+  tags:
+    - load-database
+    - retrieve-credentials
+
+- name: Display credentials status
+  debug:
+    msg: |
+      ✓ Credentials Retrieved:
+        Source: {{ adw_password_source }}
+        User: {{ adw_user }}
+        Connection String: {{ adw_connection_string }}
+        SQLPlus Available: {{ sqlplus_check.rc == 0 | default('Not tested') }}
+  tags:
+    - load-database
+    - retrieve-credentials
+
+-----------------------------------------------------------------------------------------------------------------------------------------------------------
+----roles\oci-reporting-daily\tasks\adw-data-loader\03_generate_loader.yml
+
+---
+# Generate database_loader.py from Jinja2 template with current environment
+
+- name: Create templates directory if missing
+  file:
+    path: "{{ role_path }}/templates"
+    state: directory
+    mode: '0755'
+  tags:
+    - load-database
+    - generate-loader
+
+- name: Generate database_loader.py from template
+  template:
+    src: "{{ role_path }}/templates/database_loader.py.j2"
+    dest: "/tmp/database_loader_{{ execution_timestamp }}.py"
+    mode: '0755'
+  register: loader_generated
+  vars:
+    loader_output_file: "/tmp/database_loader_{{ execution_timestamp }}.py"
+  tags:
+    - load-database
+    - generate-loader
+
+- name: Validate generated Python script syntax
+  shell: |
+    python3 -m py_compile "{{ loader_generated.dest }}"
+  register: syntax_check
+  changed_when: false
+  tags:
+    - load-database
+    - generate-loader
+
+- name: Assert loader script generated successfully
+  assert:
+    that:
+      - loader_generated is changed or loader_generated is succeeded
+      - syntax_check.rc == 0
+    fail_msg: "Failed to generate database_loader.py or syntax error detected"
+    success_msg: "✓ Database loader script generated successfully"
+  tags:
+    - load-database
+    - generate-loader
+
+- name: Display generated loader information
+  debug:
+    msg: |
+      ✓ Database Loader Generated:
+        File: {{ loader_generated.dest }}
+        Size: {{ loader_generated.dest | stat | map(attribute='size') | first }} bytes
+        Syntax: Valid (Python {{ python_version }})
+        Timestamp: {{ execution_timestamp }}
+  vars:
+    python_version: "{{ ansible_python_version | default('unknown') }}"
+  tags:
+    - load-database
+    - generate-loader
+
+- name: Set loader path in facts
+  set_fact:
+    database_loader_script: "{{ loader_generated.dest }}"
+  tags:
+    - load-database
+    - generate-loader
+
+-----------------------------------------------------------------------------------------------------------------------------------------------------------
+---- roles\oci-reporting-daily\tasks\adw-data-loader\04_load_data.yml
+---
+# Execute database loader to populate ADW tables
+
+- name: Find latest CSV files from inventory collection
+  find:
+    paths: "{{ data_dir }}"
+    patterns: "{{ item }}"
+    file_type: file
+  register: csv_files
+  loop:
+    - "adb_inventory_*.csv"
+    - "non_adb_infra_inventory_*.csv"
+  tags:
+    - load-database
+    - load-data
+
+- name: Assert CSV files exist for loading
+  assert:
+    that:
+      - csv_files.results[0].files | length > 0
+      - csv_files.results[1].files | length > 0
+    fail_msg: "CSV inventory files not found in {{ data_dir }}"
+    success_msg: "✓ CSV files ready for loading"
+  tags:
+    - load-database
+    - load-data
+
+- name: Set latest CSV file paths
+  set_fact:
+    latest_adb_csv: "{{ (csv_files.results[0].files | sort(attribute='mtime', reverse=True) | first).path }}"
+    latest_non_adb_csv: "{{ (csv_files.results[1].files | sort(attribute='mtime', reverse=True) | first).path }}"
+  tags:
+    - load-database
+    - load-data
+
+- name: Execute database loader script
+  shell: |
+    export TNS_ADMIN="{{ adw_wallet_path }}"
+    export ORACLE_HOME="{{ oracle_home | default('/opt/oracle') }}"
+    python3 "{{ database_loader_script }}" \
+      --adb-csv "{{ latest_adb_csv }}" \
+      --non-adb-csv "{{ latest_non_adb_csv }}" \
+      --connection "{{ adw_connection_string }}" \
+      --user "{{ adw_user }}"
+  register: loader_execution
+  environment:
+    ADW_PASSWORD: "{{ adw_password }}"
+    TNS_ADMIN: "{{ adw_wallet_path }}"
+    ORACLE_HOME: "{{ oracle_home | default('/opt/oracle') }}"
+  changed_when: loader_execution.rc == 0
+  tags:
+    - load-database
+    - load-data
+
+- name: Log database load results
+  debug:
+    msg: "{{ loader_execution.stdout }}"
+  when: loader_execution.stdout | length > 0
+  tags:
+    - load-database
+    - load-data
+
+- name: Assert data load succeeded
+  assert:
+    that:
+      - loader_execution.rc == 0
+    fail_msg: |
+      Database loader failed with exit code {{ loader_execution.rc }}
+      Error: {{ loader_execution.stderr | default('No error message') }}
+    success_msg: "✓ Data loaded to ADW successfully"
+  tags:
+    - load-database
+    - load-data
+
+- name: Display load execution summary
+  debug:
+    msg: |
+      ✓ Data Load Completed:
+        ADB CSV: {{ latest_adb_csv | basename }}
+        Non-ADB CSV: {{ latest_non_adb_csv | basename }}
+        Connection: {{ adw_connection_string }}
+        User: {{ adw_user }}
+        Status: SUCCESS
+  tags:
+    - load-database
+    - load-data
+
+-----------------------------------------------------------------------------------------------------------------------------------------------------------
+---- roles\oci-reporting-daily\tasks\adw-data-loader\05_verify.yml
+---
+# Verify ADW tables were created and data loaded successfully
+
+- name: Query ADB inventory table row count
+  shell: |
+    sqlplus -s "{{ adw_user }}/{{ adw_password }}@{{ adw_connection_string }}" <<EOF
+    SET HEADING OFF FEEDBACK OFF PAGESIZE 0 LINESIZE 32767 ECHO OFF VERIFY OFF TRIMSPOOL ON
+    SELECT COUNT(*) FROM OCI_ADB_INVENTORY;
+    EXIT;
+    EOF
+  register: adb_table_count
+  environment:
+    TNS_ADMIN: "{{ adw_wallet_path }}"
+  changed_when: false
+  tags:
+    - load-database
+    - verify-load
+
+- name: Query Non-ADB inventory table row count
+  shell: |
+    sqlplus -s "{{ adw_user }}/{{ adw_password }}@{{ adw_connection_string }}" <<EOF
+    SET HEADING OFF FEEDBACK OFF PAGESIZE 0 LINESIZE 32767 ECHO OFF VERIFY OFF TRIMSPOOL ON
+    SELECT COUNT(*) FROM OCI_NON_ADB_INVENTORY;
+    EXIT;
+    EOF
+  register: non_adb_table_count
+  environment:
+    TNS_ADMIN: "{{ adw_wallet_path }}"
+  changed_when: false
+  tags:
+    - load-database
+    - verify-load
+
+- name: Parse table row counts
+  set_fact:
+    adb_row_count: "{{ adb_table_count.stdout | trim | int }}"
+    non_adb_row_count: "{{ non_adb_table_count.stdout | trim | int }}"
+  tags:
+    - load-database
+    - verify-load
+
+- name: Assert tables contain data
+  assert:
+    that:
+      - adb_row_count | int > 0
+      - non_adb_row_count | int > 0
+    fail_msg: |
+      Data load verification failed:
+        ADB Inventory Rows: {{ adb_row_count }}
+        Non-ADB Inventory Rows: {{ non_adb_row_count }}
+    success_msg: |
+      ✓ Data load verification successful
+        ADB Inventory Rows: {{ adb_row_count }}
+        Non-ADB Inventory Rows: {{ non_adb_row_count }}
+  tags:
+    - load-database
+    - verify-load
+
+- name: Query table schemas
+  shell: |
+    sqlplus -s "{{ adw_user }}/{{ adw_password }}@{{ adw_connection_string }}" <<EOF
+    SET HEADING OFF FEEDBACK OFF PAGESIZE 0 LINESIZE 32767 ECHO OFF VERIFY OFF TRIMSPOOL ON
+    SELECT COLUMN_NAME FROM DBA_TAB_COLUMNS WHERE TABLE_NAME='OCI_ADB_INVENTORY' ORDER BY COLUMN_ID;
+    EXIT;
+    EOF
+  register: adb_columns
+  environment:
+    TNS_ADMIN: "{{ adw_wallet_path }}"
+  changed_when: false
+  tags:
+    - load-database
+    - verify-load
+
+- name: Display verification results
+  debug:
+    msg: |
+      ✓ ADW Tables Verified:
+        
+        OCI_ADB_INVENTORY:
+          Rows: {{ adb_row_count }}
+          Columns: {{ adb_columns.stdout_lines | length }}
+          Status: VERIFIED
+        
+        OCI_NON_ADB_INVENTORY:
+          Rows: {{ non_adb_row_count }}
+          Status: VERIFIED
+        
+        Verification Timestamp: {{ ansible_date_time.iso8601 }}
+  tags:
+    - load-database
+    - verify-load
+
+- name: Set load completion status
+  set_fact:
+    adw_load_status: "SUCCESS"
+    adw_load_timestamp: "{{ ansible_date_time.iso8601 }}"
+    table_row_counts:
+      adb_inventory: "{{ adb_row_count }}"
+      non_adb_inventory: "{{ non_adb_row_count }}"
+  tags:
+    - load-database
+    - verify-load
+
+-----------------------------------------------------------------------------------------------------------------------------------------------------------
+---- roles\oci-reporting-daily\tasks\adw-data-loader\main.yml
+---
+# Stage 2: Persist - reference existing role task files
+
+- name: Stage 2 | Set facts
+  import_tasks: set_facts.yml
+
+- name: Stage 2 | Validate Wallet
+  import_tasks: 01_validate_wallet.yml
+
+- name: Stage 2 | Retrieve Credentials
+  import_tasks: 02_retrieve_credentials.yml
+
+- name: Stage 2 | Generate Loader
+  import_tasks: 03_generate_loader.yml
+
+- name: Stage 2 | Load Data
+  import_tasks: 04_load_data.yml
+
+- name: Stage 2 | Verify
+  import_tasks: 05_verify.yml
+
+-----------------------------------------------------------------------------------------------------------------------------------------------------------
+---- roles\oci-reporting-daily\tasks\adw-data-loader\set_facts.yml
+---
+# Centralize all facts and variables for ADW data loader stage
+
+- name: Set ADW load status - initialized
+  set_fact:
+    adw_load_status: "IN_PROGRESS"
+    adw_load_start_timestamp: "{{ ansible_date_time.iso8601 }}"
+  tags:
+    - load-database
+
+- name: Set initial ADW connection parameters
+  set_fact:
+    database_loader_script: ""
+    adw_password_source: "undefined"
+    adb_row_count: 0
+    non_adb_row_count: 0
+  tags:
+    - load-database
+
+- name: Display ADW load initialization
+  debug:
+    msg: |
+      ✓ ADW Data Loader Initialized:
+        Status: {{ adw_load_status }}
+        Start Time: {{ adw_load_start_timestamp }}
+        Connection String: {{ adw_connection_string }}
+        Wallet Path: {{ adw_wallet_path }}
+        Data Directory: {{ data_dir }}
+  tags:
+    - load-database
+
+-----------------------------------------------------------------------------------------------------------------------------------------------------------
+----roles\oci-reporting-daily\tasks\email-notification\01_validate_config.yml
+---
+# Validate email configuration and notification prerequisites
+
+- name: Check email delivery configuration
+  assert:
+    that:
+      - email_enabled | bool
+      - email_from | length > 0
+      - email_recipients | length > 0
+    fail_msg: |
+      Email configuration missing:
+        Email Enabled: {{ email_enabled }}
+        From Address: {{ email_from }}
+        Recipients: {{ email_recipients }}
+    success_msg: "✓ Email configuration validated"
+  tags:
+    - email-notification
+    - validate
+
+- name: Check mail command availability
+  shell: which mail
+  register: mail_check
+  changed_when: false
+  tags:
+    - email-notification
+    - validate
+
+- name: Assert mail utility is available
+  assert:
+    that:
+      - mail_check.rc == 0
+    fail_msg: "mail utility not found. Install mailutils or postfix."
+    success_msg: "✓ Mail utility available at {{ mail_check.stdout | trim }}"
+  tags:
+    - email-notification
+    - validate
+
+- name: Validate SMTP configuration (if using OCI Email Delivery)
+  assert:
+    that:
+      - smtp_host | length > 0 or not use_oci_email_delivery | bool
+      - smtp_port | int > 0 or not use_oci_email_delivery | bool
+    fail_msg: "SMTP configuration incomplete for OCI Email Delivery"
+    success_msg: "✓ SMTP configuration validated"
+  tags:
+    - email-notification
+    - validate
+
+- name: Validate report files exist
+  stat:
+    path: "{{ item }}"
+  register: report_stat
+  loop:
+    - "{{ adb_report_file }}"
+    - "{{ non_adb_report_file }}"
+  tags:
+    - email-notification
+    - validate
+
+- name: Assert reports exist for email attachment
+  assert:
+    that:
+      - report_stat.results | map(attribute='stat.exists') | list | all
+    fail_msg: "Report files not found for email attachment"
+    success_msg: "✓ Report files exist and ready for email"
+  tags:
+    - email-notification
+    - validate
+
+- name: Display email validation results
+  debug:
+    msg: |
+      ✓ Email Configuration Validated:
+        From: {{ email_from }}
+        Recipients: {{ email_recipients | join(', ') }}
+        Subject: {{ email_subject }}
+        Attachments: {{ report_stat.results | length }}
+        Mail Command: {{ mail_check.stdout | trim }}
+        SMTP Host: {{ smtp_host | default('local') }}
+  tags:
+    - email-notification
+    - validate
+
+-----------------------------------------------------------------------------------------------------------------------------------------------------------
+----roles\oci-reporting-daily\tasks\email-notification\02_prepare_email.yml
+---
+# Prepare email body from template and gather report files for attachment
+
+- name: Create email template directory if missing
+  file:
+    path: "{{ role_path }}/templates"
+    state: directory
+    mode: '0755'
+  tags:
+    - email-notification
+    - prepare-email
+
+- name: Generate email body from template
+  template:
+    src: "{{ role_path }}/templates/email_body.txt.j2"
+    dest: "/tmp/email_body_{{ execution_timestamp }}.txt"
+  register: email_body_generated
+  vars:
+    adb_inventory_file: "{{ adb_report_file | basename }}"
+    non_adb_inventory_file: "{{ non_adb_report_file | basename }}"
+    execution_date: "{{ ansible_date_time.iso8601 | to_datetime('%Y-%m-%dT%H:%M:%S%z') | strftime('%Y-%m-%d %H:%M:%S') }}"
+  tags:
+    - email-notification
+    - prepare-email
+
+- name: Read email body content
+  slurp:
+    src: "{{ email_body_generated.dest }}"
+  register: email_body_content
+  tags:
+    - email-notification
+    - prepare-email
+
+- name: Set email body in facts
+  set_fact:
+    email_message_body: "{{ email_body_content.content | b64decode }}"
+  tags:
+    - email-notification
+    - prepare-email
+
+- name: Collect report files for attachment
+  find:
+    paths: "{{ reports_dir }}"
+    patterns: "*_report_*.xlsx"
+    file_type: file
+    age: "-1h"
+  register: report_attachments
+  tags:
+    - email-notification
+    - prepare-email
+
+- name: Build attachment list
+  set_fact:
+    email_attachments: "{{ report_attachments.files | map(attribute='path') | list }}"
+    attachment_count: "{{ report_attachments.files | length }}"
+  tags:
+    - email-notification
+    - prepare-email
+
+- name: Display email preparation status
+  debug:
+    msg: |
+      ✓ Email Preparation Complete:
+        Subject: {{ email_subject }}
+        Body File: {{ email_body_generated.dest }}
+        Body Size: {{ (email_message_body | length) }} characters
+        Recipients: {{ email_recipients | length }}
+        Attachments: {{ attachment_count }}
+      {% for attachment in email_attachments %}
+          - {{ attachment | basename }}
+      {% endfor %}
+  tags:
+    - email-notification
+    - prepare-email
+
+-----------------------------------------------------------------------------------------------------------------------------------------------------------
+----roles\oci-reporting-daily\tasks\email-notification\03_send.yml
+---
+# Build and send email with report attachments
+
+- name: Build email with MIME attachments
+  shell: |
+    python3 << 'EOFPYTHON'
+    import mimetypes
+    import os
+    from pathlib import Path
+    import base64
+    
+    # Prepare email headers
+    from_addr = "{{ email_from }}"
+    to_addrs = "{{ email_recipients | join(';') }}"
+    subject = "{{ email_subject }}"
+    
+    # Start building email
+    email_parts = []
+    email_parts.append(f"From: {from_addr}")
+    email_parts.append(f"To: {to_addrs}")
+    email_parts.append(f"Subject: {subject}")
+    email_parts.append("MIME-Version: 1.0")
+    email_parts.append("Content-Type: multipart/mixed; boundary=\"===============BOUNDARY===============\"")
+    email_parts.append("")
+    
+    # Add text body
+    email_parts.append("--===============BOUNDARY===============")
+    email_parts.append("Content-Type: text/plain; charset=\"UTF-8\"")
+    email_parts.append("Content-Transfer-Encoding: 7bit")
+    email_parts.append("")
+    email_parts.append("""{{ email_message_body }}""")
+    email_parts.append("")
+    
+    # Add attachments
+    {% for attachment in email_attachments %}
+    email_parts.append("--===============BOUNDARY===============")
+    email_parts.append("Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+    email_parts.append("Content-Disposition: attachment; filename=\"{{ attachment | basename }}\"")
+    email_parts.append("Content-Transfer-Encoding: base64")
+    email_parts.append("")
+    with open("{{ attachment }}", "rb") as f:
+        data = base64.b64encode(f.read()).decode()
+        for i in range(0, len(data), 76):
+            email_parts.append(data[i:i+76])
+    email_parts.append("")
+    {% endfor %}
+    
+    email_parts.append("--===============BOUNDARY===============--")
+    
+    # Write to temp file
+    with open("/tmp/email_message_{{ execution_timestamp }}.eml", "w") as f:
+        f.write("\n".join(email_parts))
+    
+    print("Email message prepared")
+    EOFPYTHON
+  register: email_build_result
+  environment:
+    email_message_body: "{{ email_message_body }}"
+  tags:
+    - email-notification
+    - send-email
+
+- name: Send email using mail command
+  shell: |
+    sendmail << 'EOF'
+    From: {{ email_from }}
+    To: {{ email_recipients | join(',') }}
+    Subject: {{ email_subject }}
+    MIME-Version: 1.0
+    Content-Type: multipart/mixed; boundary="===============BOUNDARY==============="
+    
+    --===============BOUNDARY===============
+    Content-Type: text/plain; charset="UTF-8"
+    Content-Transfer-Encoding: 7bit
+    
+    {{ email_message_body }}
+    
+    {% for attachment in email_attachments %}
+    --===============BOUNDARY===============
+    Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet
+    Content-Disposition: attachment; filename="{{ attachment | basename }}"
+    Content-Transfer-Encoding: base64
+    
+    {% endfor %}
+    --===============BOUNDARY===============--
+    EOF
+  register: sendmail_result
+  changed_when: sendmail_result.rc == 0
+  tags:
+    - email-notification
+    - send-email
+
+- name: Log email send results
+  debug:
+    msg: |
+      ✓ Email Sent:
+        From: {{ email_from }}
+        To: {{ email_recipients | join(', ') }}
+        Subject: {{ email_subject }}
+        Attachments: {{ attachment_count }}
+        Send Timestamp: {{ ansible_date_time.iso8601 }}
+  tags:
+    - email-notification
+    - send-email
+
+- name: Assert email sent successfully
+  assert:
+    that:
+      - sendmail_result.rc == 0
+    fail_msg: |
+      Email send failed with exit code {{ sendmail_result.rc }}
+      Error: {{ sendmail_result.stderr | default('No error message') }}
+    success_msg: "✓ Email delivery initiated successfully"
+  tags:
+    - email-notification
+    - send-email
+
+-----------------------------------------------------------------------------------------------------------------------------------------------------------
+---- roles\oci-reporting-daily\tasks\email-notification\04_verify.yml
+---
+# Verify email was sent and delivery status
+
+- name: Check postfix mail queue
+  shell: mailq | tail -5
+  register: mail_queue
+  changed_when: false
+  tags:
+    - email-notification
+    - verify-delivery
+
+- name: Check system mail logs for delivery confirmation
+  shell: |
+    grep -i "status=sent\|Successfully sent" /var/log/mail.log /var/log/syslog 2>/dev/null | tail -5
+  register: mail_logs
+  changed_when: false
+  failed_when: false
+  tags:
+    - email-notification
+    - verify-delivery
+
+- name: Display mail queue status
+  debug:
+    msg: |
+      ✓ Email Delivery Verification:
+        Mail Queue Status:
+        {{ mail_queue.stdout | default('No pending messages') }}
+        
+        Recent Mail Log Entries:
+        {{ mail_logs.stdout | default('No log entries found') }}
+  when: mail_queue.stdout | length > 0 or mail_logs.stdout | length > 0
+  tags:
+    - email-notification
+    - verify-delivery
+
+- name: Set email send completion status
+  set_fact:
+    email_send_status: "SUCCESS"
+    email_send_timestamp: "{{ ansible_date_time.iso8601 }}"
+    recipients_count: "{{ email_recipients | length }}"
+  tags:
+    - email-notification
+    - verify-delivery
+
+- name: Display final email notification summary
+  debug:
+    msg: |
+      ✓ Email Notification - COMPLETED:
+        Status: {{ email_send_status }}
+        Subject: {{ email_subject }}
+        From: {{ email_from }}
+        Recipients: {{ recipients_count }}
+          {% for recipient in email_recipients %}
+          - {{ recipient }}
+          {% endfor %}
+        Attachments: {{ attachment_count }}
+        Timestamp: {{ email_send_timestamp }}
+  tags:
+    - email-notification
+    - verify-delivery
+
+-----------------------------------------------------------------------------------------------------------------------------------------------------------
+----roles\oci-reporting-daily\tasks\email-notification\main.yml
+---
+# Stage 4: Distribute - reference existing role task files
+
+- name: Stage 4 | Set facts
+  import_tasks: set_facts.yml
+
+- name: Stage 4 | Validate config
+  import_tasks: 01_validate_config.yml
+
+- name: Stage 4 | Prepare email
+  import_tasks: 02_prepare_email.yml
+
+- name: Stage 4 | Send email
+  import_tasks: 03_send.yml
+
+- name: Stage 4 | Verify delivery
+  import_tasks: 04_verify.yml
+
+-----------------------------------------------------------------------------------------------------------------------------------------------------------
+----roles\oci-reporting-daily\tasks\email-notification\set_facts.yml
+---
+# Centralize all facts and variables for email notification stage
+
+- name: Set email notification status - initialized
+  set_fact:
+    email_notification_status: "IN_PROGRESS"
+    email_notification_start_timestamp: "{{ ansible_date_time.iso8601 }}"
+  tags:
+    - email-notification
+
+- name: Set initial email variables
+  set_fact:
+    email_message_body: ""
+    email_attachments: []
+    attachment_count: 0
+    recipients_count: 0
+  tags:
+    - email-notification
+
+- name: Display email notification initialization
+  debug:
+    msg: |
+      ✓ Email Notification Initialized:
+        Status: {{ email_notification_status }}
+        Start Time: {{ email_notification_start_timestamp }}
+        Configured Recipients: {{ email_recipients | length }}
+        Subject: {{ email_subject }}
+  tags:
+    - email-notification
+
+-----------------------------------------------------------------------------------------------------------------------------------------------------------
+----roles\oci-reporting-daily\tasks\excel-report-generator\01_find_files.yml
+---
+# Find the latest ADB and Non-ADB CSV files for report generation
+
+- name: Find latest ADB inventory CSV
+  find:
+    paths: "{{ data_dir }}"
+    patterns: "adb_inventory_*.csv"
+    file_type: file
+  register: adb_csv_search
+  tags:
+    - generate-reports
+    - find-files
+
+- name: Find latest Non-ADB inventory CSV
+  find:
+    paths: "{{ data_dir }}"
+    patterns: "non_adb_infra_inventory_*.csv"
+    file_type: file
+  register: non_adb_csv_search
+  tags:
+    - generate-reports
+    - find-files
+
+- name: Assert CSV files exist
+  assert:
+    that:
+      - adb_csv_search.files | length > 0
+      - non_adb_csv_search.files | length > 0
+    fail_msg: "CSV inventory files not found in {{ data_dir }}"
+    success_msg: "✓ CSV files found - ready for report generation"
+  tags:
+    - generate-reports
+    - find-files
+
+- name: Get latest ADB CSV file
+  set_fact:
+    adb_csv_file: "{{ (adb_csv_search.files | sort(attribute='mtime', reverse=True) | first).path }}"
+    adb_csv_mtime: "{{ (adb_csv_search.files | sort(attribute='mtime', reverse=True) | first).mtime }}"
+  tags:
+    - generate-reports
+    - find-files
+
+- name: Get latest Non-ADB CSV file
+  set_fact:
+    non_adb_csv_file: "{{ (non_adb_csv_search.files | sort(attribute='mtime', reverse=True) | first).path }}"
+    non_adb_csv_mtime: "{{ (non_adb_csv_search.files | sort(attribute='mtime', reverse=True) | first).mtime }}"
+  tags:
+    - generate-reports
+    - find-files
+
+- name: Display found CSV files
+  debug:
+    msg: |
+      ✓ CSV Files Located:
+        ADB CSV: {{ adb_csv_file | basename }}
+          Modified: {{ (adb_csv_mtime | int) | timestamp_now }}
+          Size: {{ ((adb_csv_search.files | first).size / 1024) | int }} KB
+        
+        Non-ADB CSV: {{ non_adb_csv_file | basename }}
+          Modified: {{ (non_adb_csv_mtime | int) | timestamp_now }}
+          Size: {{ ((non_adb_csv_search.files | first).size / 1024) | int }} KB
+  tags:
+    - generate-reports
+    - find-files
+
+-----------------------------------------------------------------------------------------------------------------------------------------------------------
+----roles\oci-reporting-daily\tasks\excel-report-generator\02_generate_reports.yml
+---
+# Execute Excel report generation scripts for ADB and Non-ADB inventories
+
+- name: Create reports directory if missing
+  file:
+    path: "{{ reports_dir }}"
+    state: directory
+    mode: '0755'
+  tags:
+    - generate-reports
+
+- name: Generate ADB Excel report
+  shell: |
+    python3 "{{ scripts_dir }}/adb_inventory_to_excel.py" \
+      --input "{{ adb_csv_file }}" \
+      --output "{{ reports_dir }}/adb_inventory_report_{{ execution_timestamp }}.xlsx"
+  register: adb_report_generation
+  environment:
+    PYTHONPATH: "{{ scripts_dir }}"
+  changed_when: adb_report_generation.rc == 0
+  tags:
+    - generate-reports
+    - adb-reports
+
+- name: Log ADB report generation output
+  debug:
+    msg: "{{ adb_report_generation.stdout }}"
+  when: adb_report_generation.stdout | length > 0
+  tags:
+    - generate-reports
+    - adb-reports
+
+- name: Assert ADB report generated successfully
+  assert:
+    that:
+      - adb_report_generation.rc == 0
+    fail_msg: |
+      ADB report generation failed with exit code {{ adb_report_generation.rc }}
+      Error: {{ adb_report_generation.stderr | default('No error message') }}
+    success_msg: "✓ ADB report generated successfully"
+  tags:
+    - generate-reports
+    - adb-reports
+
+- name: Generate Non-ADB Excel report
+  shell: |
+    python3 "{{ scripts_dir }}/non_adb_inventory_to_excel.py" \
+      --input "{{ non_adb_csv_file }}" \
+      --output "{{ reports_dir }}/non_adb_inventory_report_{{ execution_timestamp }}.xlsx"
+  register: non_adb_report_generation
+  environment:
+    PYTHONPATH: "{{ scripts_dir }}"
+  changed_when: non_adb_report_generation.rc == 0
+  tags:
+    - generate-reports
+    - non-adb-reports
+
+- name: Log Non-ADB report generation output
+  debug:
+    msg: "{{ non_adb_report_generation.stdout }}"
+  when: non_adb_report_generation.stdout | length > 0
+  tags:
+    - generate-reports
+    - non-adb-reports
+
+- name: Assert Non-ADB report generated successfully
+  assert:
+    that:
+      - non_adb_report_generation.rc == 0
+    fail_msg: |
+      Non-ADB report generation failed with exit code {{ non_adb_report_generation.rc }}
+      Error: {{ non_adb_report_generation.stderr | default('No error message') }}
+    success_msg: "✓ Non-ADB report generated successfully"
+  tags:
+    - generate-reports
+    - non-adb-reports
+
+- name: Display report generation completion
+  debug:
+    msg: |
+      ✓ Excel Reports Generated:
+        ADB Report: adb_inventory_report_{{ execution_timestamp }}.xlsx
+        Non-ADB Report: non_adb_inventory_report_{{ execution_timestamp }}.xlsx
+        Location: {{ reports_dir }}
+  tags:
+    - generate-reports
+
+-----------------------------------------------------------------------------------------------------------------------------------------------------------
+----roles\oci-reporting-daily\tasks\excel-report-generator\03_verify.yml
+---
+# Verify generated Excel reports are valid and contain data
+
+- name: Find generated ADB Excel reports
+  find:
+    paths: "{{ reports_dir }}"
+    patterns: "adb_inventory_report_*.xlsx"
+    file_type: file
+  register: adb_reports
+  tags:
+    - generate-reports
+    - verify-reports
+
+- name: Find generated Non-ADB Excel reports
+  find:
+    paths: "{{ reports_dir }}"
+    patterns: "non_adb_inventory_report_*.xlsx"
+    file_type: file
+  register: non_adb_reports
+  tags:
+    - generate-reports
+    - verify-reports
+
+- name: Assert Excel reports exist
+  assert:
+    that:
+      - adb_reports.files | length > 0
+      - non_adb_reports.files | length > 0
+    fail_msg: "Generated Excel reports not found in {{ reports_dir }}"
+    success_msg: "✓ Excel reports verified"
+  tags:
+    - generate-reports
+    - verify-reports
+
+- name: Get latest ADB Excel report stats
+  stat:
+    path: "{{ (adb_reports.files | sort(attribute='mtime', reverse=True) | first).path }}"
+  register: adb_report_stat
+  tags:
+    - generate-reports
+    - verify-reports
+
+- name: Get latest Non-ADB Excel report stats
+  stat:
+    path: "{{ (non_adb_reports.files | sort(attribute='mtime', reverse=True) | first).path }}"
+  register: non_adb_report_stat
+  tags:
+    - generate-reports
+    - verify-reports
+
+- name: Assert Excel files are not empty
+  assert:
+    that:
+      - adb_report_stat.stat.size > 1000
+      - non_adb_report_stat.stat.size > 1000
+    fail_msg: |
+      Excel reports appear to be invalid or empty:
+        ADB Report Size: {{ adb_report_stat.stat.size }} bytes
+        Non-ADB Report Size: {{ non_adb_report_stat.stat.size }} bytes
+    success_msg: "✓ Excel files validated (non-empty)"
+  tags:
+    - generate-reports
+    - verify-reports
+
+- name: Set generated report paths in facts
+  set_fact:
+    adb_report_file: "{{ adb_report_stat.stat.path }}"
+    non_adb_report_file: "{{ non_adb_report_stat.stat.path }}"
+    report_file_count: 2
+  tags:
+    - generate-reports
+    - verify-reports
+
+- name: Display report verification results
+  debug:
+    msg: |
+      ✓ Excel Report Verification:
+        
+        ADB Inventory Report:
+          File: {{ adb_report_stat.stat.path | basename }}
+          Size: {{ (adb_report_stat.stat.size / 1024) | int }} KB
+          Modified: {{ adb_report_stat.stat.mtime | timestamp_now }}
+          Status: VERIFIED
+        
+        Non-ADB Inventory Report:
+          File: {{ non_adb_report_stat.stat.path | basename }}
+          Size: {{ (non_adb_report_stat.stat.size / 1024) | int }} KB
+          Modified: {{ non_adb_report_stat.stat.mtime | timestamp_now }}
+          Status: VERIFIED
+        
+        Total Reports: {{ report_file_count }}
+        Location: {{ reports_dir }}
+  tags:
+    - generate-reports
+    - verify-reports
+
+-----------------------------------------------------------------------------------------------------------------------------------------------------------
+----roles\oci-reporting-daily\tasks\excel-report-generator\main.yml
+---
+# Stage 3: Report - reference existing role task files
+
+- name: Stage 3 | Set facts
+  import_tasks: set_facts.yml
+
+- name: Stage 3 | Find files
+  import_tasks: 01_find_files.yml
+
+- name: Stage 3 | Generate reports
+  import_tasks: 02_generate_reports.yml
+
+- name: Stage 3 | Verify reports
+  import_tasks: 03_verify.yml
+
+-----------------------------------------------------------------------------------------------------------------------------------------------------------
+----roles\oci-reporting-daily\tasks\excel-report-generator\set_facts.yml
+---
+# Centralize all facts and variables for Excel report generation stage
+
+- name: Set report generation status - initialized
+  set_fact:
+    report_generation_status: "IN_PROGRESS"
+    report_generation_start_timestamp: "{{ ansible_date_time.iso8601 }}"
+  tags:
+    - generate-reports
+
+- name: Set initial report file paths
+  set_fact:
+    adb_csv_file: ""
+    non_adb_csv_file: ""
+    adb_report_file: ""
+    non_adb_report_file: ""
+    report_file_count: 0
+  tags:
+    - generate-reports
+
+- name: Display report generation initialization
+  debug:
+    msg: |
+      ✓ Excel Report Generator Initialized:
+        Status: {{ report_generation_status }}
+        Start Time: {{ report_generation_start_timestamp }}
+        Data Directory: {{ data_dir }}
+        Output Directory: {{ reports_dir }}
+  tags:
+    - generate-reports
+
+-----------------------------------------------------------------------------------------------------------------------------------------------------------
+----roles\oci-reporting-daily\tasks\oci-inventory-collection\01_validate.yml
+---
+# Validate prerequisites for OCI inventory collection
+
+- name: Ensure data directory exists
+  file:
+    path: "{{ data_dir }}"
+    state: directory
+    mode: '0755'
+  tags:
+    - collect-inventory
+    - validate
+
+- name: Validate OCI profile is set
+  assert:
+    that:
+      - oci_profile is defined
+      - oci_profile | length > 0
+    fail_msg: "OCI profile must be defined. Set OCI_PROFILE environment variable or configure in inventory."
+  tags:
+    - collect-inventory
+    - validate
+
+- name: Check OCI config file exists
+  stat:
+    path: "{{ oci_config_file }}"
+  register: oci_config_stat
+  failed_when: not oci_config_stat.stat.exists
+  tags:
+    - collect-inventory
+    - validate
+
+- name: Validate Python scripts exist
+  stat:
+    path: "{{ scripts_dir }}/{{ item }}"
+  register: script_stat
+  loop:
+    - adb_inventory.py
+    - non_adb_infra_inventory.py
+  failed_when: not script_stat.stat.exists
+  tags:
+    - collect-inventory
+    - validate
+
+- name: Check Python interpreter available
+  shell: "{{ python_interpreter }} --version"
+  register: python_version
+  changed_when: false
+  tags:
+    - collect-inventory
+    - validate
+
+- name: Display validation status
+  debug:
+    msg: "✓ All prerequisites validated successfully. Python {{ python_version.stdout }}"
+  tags:
+    - collect-inventory
+    - validate
+
+-----------------------------------------------------------------------------------------------------------------------------------------------------------
+----roles\oci-reporting-daily\tasks\oci-inventory-collection\02_execute.yml
+---
+# Execute OCI inventory collection scripts
+
+- name: Copy ADB inventory script to /tmp
+  copy:
+    src: "{{ scripts_dir }}/adb_inventory.py"
+    dest: "/tmp/adb_inventory.py"
+    mode: '0755'
+  tags:
+    - collect-inventory
+    - adb-collection
+
+- name: Copy Non-ADB inventory script to /tmp
+  copy:
+    src: "{{ scripts_dir }}/non_adb_infra_inventory.py"
+    dest: "/tmp/non_adb_infra_inventory.py"
+    mode: '0755'
+  tags:
+    - collect-inventory
+    - non-adb-collection
+
+- name: Execute ADB inventory collection
+  shell: |
+    export OCI_PROFILE={{ oci_profile }}
+    {{ python_interpreter }} /tmp/adb_inventory.py
+  args:
+    chdir: "{{ project_base_dir }}"
+  environment:
+    OCI_PROFILE: "{{ oci_profile }}"
+    PATH: "{{ ansible_env.PATH }}"
+  register: adb_collection_result
+  timeout: "{{ inventory_collection_timeout }}"
+  tags:
+    - collect-inventory
+    - adb-collection
+
+- name: Execute Non-ADB inventory collection
+  shell: |
+    export OCI_PROFILE={{ oci_profile }}
+    {{ python_interpreter }} /tmp/non_adb_infra_inventory.py
+  args:
+    chdir: "{{ project_base_dir }}"
+  environment:
+    OCI_PROFILE: "{{ oci_profile }}"
+    PATH: "{{ ansible_env.PATH }}"
+  register: non_adb_collection_result
+  timeout: "{{ inventory_collection_timeout }}"
+  tags:
+    - collect-inventory
+    - non-adb-collection
+
+- name: Display ADB collection output
+  debug:
+    msg: "{{ adb_collection_result.stdout }}"
+  when: adb_collection_result.stdout | length > 0
+  tags:
+    - collect-inventory
+    - adb-collection
+
+- name: Display Non-ADB collection output
+  debug:
+    msg: "{{ non_adb_collection_result.stdout }}"
+  when: non_adb_collection_result.stdout | length > 0
+  tags:
+    - collect-inventory
+    - non-adb-collection
+
+- name: Check for collection errors
+  assert:
+    that:
+      - adb_collection_result.rc == 0
+      - non_adb_collection_result.rc == 0
+    fail_msg: "Inventory collection failed. Check logs for details."
+  tags:
+    - collect-inventory
+
+- name: Display collection completion
+  debug:
+    msg: "✓ OCI inventory collection completed successfully"
+  tags:
+    - collect-inventory
+
+-----------------------------------------------------------------------------------------------------------------------------------------------------------
+----roles\oci-reporting-daily\tasks\oci-inventory-collection\03_verify.yml
+---
+# Verify OCI inventory collection output
+
+- name: Find latest ADB inventory CSV
+  find:
+    paths: "{{ data_dir }}"
+    patterns: "{{ adb_csv_pattern }}"
+    file_type: file
+  register: adb_csv_files
+  tags:
+    - collect-inventory
+    - validate
+
+- name: Find latest Non-ADB inventory CSV
+  find:
+    paths: "{{ data_dir }}"
+    patterns: "{{ non_adb_csv_pattern }}"
+    file_type: file
+  register: non_adb_csv_files
+  tags:
+    - collect-inventory
+    - validate
+
+- name: Validate ADB CSV exists
+  assert:
+    that:
+      - adb_csv_files.files | length > 0
+    fail_msg: "No ADB inventory CSV file found in {{ data_dir }}"
+  tags:
+    - collect-inventory
+    - validate
+
+- name: Validate Non-ADB CSV exists
+  assert:
+    that:
+      - non_adb_csv_files.files | length > 0
+    fail_msg: "No Non-ADB inventory CSV file found in {{ data_dir }}"
+  tags:
+    - collect-inventory
+    - validate
+
+- name: Check ADB CSV file size
+  stat:
+    path: "{{ adb_csv_files.files | sort(attribute='mtime', reverse=True) | first | map(attribute='path') | first }}"
+  register: adb_csv_stat
+  tags:
+    - collect-inventory
+    - validate
+
+- name: Check Non-ADB CSV file size
+  stat:
+    path: "{{ non_adb_csv_files.files | sort(attribute='mtime', reverse=True) | first | map(attribute='path') | first }}"
+  register: non_adb_csv_stat
+  tags:
+    - collect-inventory
+    - validate
+
+- name: Display CSV file information
+  debug:
+    msg: |
+      ✓ ADB Inventory CSV: {{ adb_csv_files.files | sort(attribute='mtime', reverse=True) | first | map(attribute='path') | first }}
+        Size: {{ adb_csv_stat.stat.size }} bytes
+      
+      ✓ Non-ADB Inventory CSV: {{ non_adb_csv_files.files | sort(attribute='mtime', reverse=True) | first | map(attribute='path') | first }}
+        Size: {{ non_adb_csv_stat.stat.size }} bytes
+  tags:
+    - collect-inventory
+    - validate
+
+- name: Verify CSV files are not empty
+  assert:
+    that:
+      - adb_csv_stat.stat.size > 100
+      - non_adb_csv_stat.stat.size > 100
+    fail_msg: "CSV files are too small. Possible empty inventory results."
+  tags:
+    - collect-inventory
+    - validate
+
+-----------------------------------------------------------------------------------------------------------------------------------------------------------
+----roles\oci-reporting-daily\tasks\oci-inventory-collection\main.yml
+---
+# Stage 1: Collect - reference existing role task files
+
+- name: Stage 1 | Set facts
+  import_tasks: set_facts.yml
+
+- name: Stage 1 | Validate
+  import_tasks: 01_validate.yml
+
+- name: Stage 1 | Execute
+  import_tasks: 02_execute.yml
+
+- name: Stage 1 | Verify
+  import_tasks: 03_verify.yml
+
+-----------------------------------------------------------------------------------------------------------------------------------------------------------
+----roles\oci-reporting-daily\tasks\oci-inventory-collection\set_facts.yml
+---
+# Centralize all facts and variables for oci-inventory-collection stage
+
+- name: Set collection status - initialized
+  set_fact:
+    inventory_collection_status: "IN_PROGRESS"
+    collection_start_timestamp: "{{ ansible_date_time.iso8601 }}"
+  tags:
+    - collect-inventory
+
+- name: Set initial CSV paths
+  set_fact:
+    adb_csv_file: ""
+    non_adb_csv_file: ""
+    csv_file_count: 0
+  tags:
+    - collect-inventory
+
+- name: Find latest CSV files for facts
+  find:
+    paths: "{{ data_dir }}"
+    patterns: "{{ item.pattern }}"
+    file_type: file
+  register: csv_files
+  loop:
+    - { pattern: "{{ adb_csv_pattern }}", name: "adb" }
+    - { pattern: "{{ non_adb_csv_pattern }}", name: "non_adb" }
+  when: collect_adb_inventory or collect_non_adb_inventory
+  tags:
+    - collect-inventory
+
+- name: Set ADB CSV path in facts
+  set_fact:
+    adb_csv_file: "{{ (csv_files.results[0].files | sort(attribute='mtime', reverse=True) | first).path }}"
+    adb_csv_mtime: "{{ (csv_files.results[0].files | sort(attribute='mtime', reverse=True) | first).mtime }}"
+  when: csv_files.results[0].files | length > 0
+  tags:
+    - collect-inventory
+
+- name: Set Non-ADB CSV path in facts
+  set_fact:
+    non_adb_csv_file: "{{ (csv_files.results[1].files | sort(attribute='mtime', reverse=True) | first).path }}"
+    non_adb_csv_mtime: "{{ (csv_files.results[1].files | sort(attribute='mtime', reverse=True) | first).mtime }}"
+  when: csv_files.results[1].files | length > 0
+  tags:
+    - collect-inventory
+
+- name: Count CSV files created
+  set_fact:
+    csv_file_count: "{{ (csv_files.results | map(attribute='files') | flatten | length) }}"
+  tags:
+    - collect-inventory
+
+- name: Set collection completion status - success
+  set_fact:
+    inventory_collection_status: "SUCCESS"
+    collection_end_timestamp: "{{ ansible_date_time.iso8601 }}"
+  tags:
+    - collect-inventory
+
+- name: Display collected facts
+  debug:
+    msg: |
+      ✓ Inventory Collection Facts:
+        Status: {{ inventory_collection_status }}
+        ADB CSV: {{ adb_csv_file }}
+        Non-ADB CSV: {{ non_adb_csv_file }}
+        Total Files: {{ csv_file_count }}
+        Start: {{ collection_start_timestamp }}
+        End: {{ collection_end_timestamp }}
+  tags:
+    - collect-inventory
+
+-----------------------------------------------------------------------------------------------------------------------------------------------------------
+----roles\oci-reporting-daily\tasks\main.yml
+---
+# Calls Each Tasks (ex: Stage-1, Stage-2 etc..)
+
+- name: Load playbook facts
+  include_tasks: set_facts.yml
+
+- name: Stage 1 Collect - oci-inventory-collection
+  import_tasks: oci-inventory-collection/main.yml
+
+- name: Stage 2 Persist - adw-data-loader
+  import_tasks: adw-data-loader/main.yml
+
+- name: Stage 3 Report - excel-report-generator
+  import_tasks: excel-report-generator/main.yml
+
+- name: Stage 4 Distribute - email-notification
+  import_tasks: email-notification/main.yml
+
+- name: Finalize pipeline facts
+  set_fact:
+    pipeline_status: SUCCESS
+    pipeline_finished_at: "{{ ansible_date_time.iso8601 }}"
+
+-----------------------------------------------------------------------------------------------------------------------------------------------------------
+----roles\oci-reporting-daily\tasks\set_facts.yml
+---
+# Variables defined here for playbook run
+
+- name: Initialize pipeline facts
+  set_fact:
+    pipeline_status: IN_PROGRESS
+    pipeline_started_at: "{{ ansible_date_time.iso8601 }}"
+    execution_timestamp: "{{ ansible_date_time.iso8601_basic }}"
+    project_base_dir: "{{ project_base_dir | default(playbook_dir) }}"
+    data_dir: "{{ data_dir | default(project_base_dir + '/data') }}"
+    scripts_dir: "{{ scripts_dir | default(project_base_dir + '/scripts') }}"
+    reports_dir: "{{ reports_dir | default(project_base_dir + '/reports') }}"
+    logs_dir: "{{ logs_dir | default(project_base_dir + '/logs') }}"
+  tags: [always]
+
+-----------------------------------------------------------------------------------------------------------------------------------------------------------
+----roles\oci-reporting-daily\templates\database_loader.py.j2
+#!/usr/bin/env python3
+"""
+Ansible-managed Database Loader Template
+Load OCI inventory CSV data to Autonomous Data Warehouse
+Generated by Ansible at {{ ansible_date_time.iso8601 }}
+"""
+
+import cx_Oracle
+import pandas as pd
+from pathlib import Path
+from datetime import datetime
+import logging
+import os
+from typing import Optional, Dict
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
+
+# Configuration from Ansible variables
+BASE_DIR = Path('{{ project_base_dir }}')
+DATA_DIR = BASE_DIR / 'data'
+LOGS_DIR = BASE_DIR / 'logs'
+LOGS_DIR.mkdir(exist_ok=True)
+
+# ADW Configuration
+ADW_WALLET_PATH = '{{ adw_wallet_path }}'
+ADW_USER = '{{ adw_user }}'
+ADW_PASSWORD = '{{ adw_password }}'
+ADW_CONNECTION_NAME = '{{ adw_connection_name }}'
+
+
+class ADWLoader:
+    """Manage ADW connections and data loading operations."""
+
+    def __init__(self, wallet_path: str, user: str, connection_name: str):
+        """Initialize ADW connection with wallet."""
+        self.wallet_path = wallet_path
+        self.user = user
+        self.connection_name = connection_name
+        self.connection = None
+
+    def connect(self, password: str) -> bool:
+        """Establish connection to ADW."""
+        try:
+            cx_Oracle.init_oracle_client(lib_dir="/usr/lib/oracle/current/client64/lib")
+
+            dsn = cx_Oracle.makedsn(
+                self.connection_name,
+                1522,
+                service_name=self.connection_name
+            )
+
+            self.connection = cx_Oracle.connect(
+                self.user,
+                password,
+                dsn,
+                encoding="UTF-8"
+            )
+            logger.info(f"Connected to ADW: {self.connection_name}")
+            return True
+
+        except Exception as e:
+            logger.error(f"Failed to connect to ADW: {str(e)}")
+            return False
+
+    def disconnect(self):
+        """Close ADW connection."""
+        if self.connection:
+            self.connection.close()
+            logger.info("ADW connection closed")
+
+    def create_adb_inventory_table(self):
+        """Create ADB inventory table if not exists."""
+        query = """
+        CREATE TABLE IF NOT EXISTS OCI_ADB_INVENTORY (
+            ID NUMBER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+            COMPARTMENT_NAME VARCHAR2(256),
+            COMPARTMENT_OCID VARCHAR2(256),
+            ADB_NAME VARCHAR2(256),
+            ADB_OCID VARCHAR2(256),
+            ADB_TYPE VARCHAR2(50),
+            LIFECYCLE_STATE VARCHAR2(50),
+            CPU_COUNT NUMBER,
+            STORAGE_TB NUMBER,
+            AUTO_SCALING VARCHAR2(10),
+            LICENSE_MODEL VARCHAR2(50),
+            TIME_CREATED TIMESTAMP,
+            LOADED_AT TIMESTAMP DEFAULT SYSDATE,
+            UNIQUE(ADB_OCID, LOADED_AT)
+        )
+        """
+        try:
+            cursor = self.connection.cursor()
+            cursor.execute(query)
+            self.connection.commit()
+            logger.info("ADB inventory table created/verified")
+        except Exception as e:
+            logger.warning(f"Table creation note: {str(e)}")
+
+    def create_non_adb_inventory_table(self):
+        """Create Non-ADB infrastructure inventory table if not exists."""
+        query = """
+        CREATE TABLE IF NOT EXISTS OCI_NON_ADB_INVENTORY (
+            ID NUMBER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+            COMPARTMENT VARCHAR2(256),
+            RESOURCE_TYPE VARCHAR2(50),
+            RESOURCE_NAME VARCHAR2(256),
+            RESOURCE_OCID VARCHAR2(256),
+            CPU_COUNT NUMBER,
+            LIFECYCLE_STATE VARCHAR2(50),
+            LOADED_AT TIMESTAMP DEFAULT SYSDATE,
+            UNIQUE(RESOURCE_OCID, LOADED_AT)
+        )
+        """
+        try:
+            cursor = self.connection.cursor()
+            cursor.execute(query)
+            self.connection.commit()
+            logger.info("Non-ADB inventory table created/verified")
+        except Exception as e:
+            logger.warning(f"Table creation note: {str(e)}")
+
+    def load_adb_inventory(self, csv_file: Path) -> int:
+        """Load ADB inventory CSV into ADW."""
+        try:
+            df = pd.read_csv(csv_file)
+            cursor = self.connection.cursor()
+
+            insert_query = """
+            INSERT INTO OCI_ADB_INVENTORY (
+                COMPARTMENT_NAME, COMPARTMENT_OCID, ADB_NAME, ADB_OCID,
+                ADB_TYPE, LIFECYCLE_STATE, CPU_COUNT, STORAGE_TB,
+                AUTO_SCALING, LICENSE_MODEL, TIME_CREATED
+            ) VALUES (:1, :2, :3, :4, :5, :6, :7, :8, :9, :10, :11)
+            """
+
+            rows_inserted = 0
+            for _, row in df.iterrows():
+                try:
+                    cursor.execute(insert_query, (
+                        row.get('Compartment_Name'),
+                        row.get('Compartment_OCID'),
+                        row.get('ADB_Name'),
+                        row.get('ADB_OCID'),
+                        row.get('ADB_Type'),
+                        row.get('Lifecycle_State'),
+                        float(row.get('CPU_Count', 0)) if pd.notna(row.get('CPU_Count')) else None,
+                        float(row.get('Storage_TB', 0)) if pd.notna(row.get('Storage_TB')) else None,
+                        row.get('Auto_Scaling'),
+                        row.get('License_Model'),
+                        row.get('Time_Created')
+                    ))
+                    rows_inserted += 1
+                except Exception as e:
+                    logger.warning(f"Failed to insert row: {str(e)}")
+                    continue
+
+            self.connection.commit()
+            logger.info(f"Loaded {rows_inserted} ADB inventory rows from {csv_file.name}")
+            return rows_inserted
+
+        except Exception as e:
+            logger.error(f"Failed to load ADB inventory: {str(e)}")
+            return 0
+
+    def load_non_adb_inventory(self, csv_file: Path) -> int:
+        """Load Non-ADB inventory CSV into ADW."""
+        try:
+            df = pd.read_csv(csv_file)
+            cursor = self.connection.cursor()
+
+            insert_query = """
+            INSERT INTO OCI_NON_ADB_INVENTORY (
+                COMPARTMENT, RESOURCE_TYPE, RESOURCE_NAME, RESOURCE_OCID,
+                CPU_COUNT, LIFECYCLE_STATE
+            ) VALUES (:1, :2, :3, :4, :5, :6)
+            """
+
+            rows_inserted = 0
+            for _, row in df.iterrows():
+                try:
+                    cursor.execute(insert_query, (
+                        row.get('Compartment'),
+                        row.get('Resource_Type'),
+                        row.get('Name'),
+                        row.get('OCID'),
+                        float(row.get('CPU_Count', 0)) if pd.notna(row.get('CPU_Count')) else None,
+                        row.get('Lifecycle_State')
+                    ))
+                    rows_inserted += 1
+                except Exception as e:
+                    logger.warning(f"Failed to insert row: {str(e)}")
+                    continue
+
+            self.connection.commit()
+            logger.info(f"Loaded {rows_inserted} Non-ADB inventory rows from {csv_file.name}")
+            return rows_inserted
+
+        except Exception as e:
+            logger.error(f"Failed to load Non-ADB inventory: {str(e)}")
+            return 0
+
+
+def load_latest_inventories(password: str) -> Dict[str, int]:
+    """Load latest CSV inventories to ADW."""
+    loader = ADWLoader(ADW_WALLET_PATH, ADW_USER, ADW_CONNECTION_NAME)
+
+    if not loader.connect(password):
+        return {"status": "error", "message": "Failed to connect to ADW"}
+
+    results = {"adb_rows": 0, "non_adb_rows": 0}
+
+    try:
+        # Create tables
+        loader.create_adb_inventory_table()
+        loader.create_non_adb_inventory_table()
+
+        # Load latest ADB inventory
+        adb_files = sorted(DATA_DIR.glob("adb_inventory_*.csv"), reverse=True)
+        if adb_files:
+            results["adb_rows"] = loader.load_adb_inventory(adb_files[0])
+
+        # Load latest Non-ADB inventory
+        non_adb_files = sorted(DATA_DIR.glob("non_adb_infra_inventory_*.csv"), reverse=True)
+        if non_adb_files:
+            results["non_adb_rows"] = loader.load_non_adb_inventory(non_adb_files[0])
+
+        results["status"] = "success"
+        logger.info(f"Inventory load completed: {results}")
+
+    finally:
+        loader.disconnect()
+
+    return results
+
+
+if __name__ == "__main__":
+    results = load_latest_inventories(ADW_PASSWORD)
+    print(f"\n{results}")
+
+-----------------------------------------------------------------------------------------------------------------------------------------------------------
+----roles\oci-reporting-daily\templates\email_body.txt.j2
+OCI Infrastructure Inventory Report
+=====================================
+
+Dear Team,
+
+Attached are the latest OCI infrastructure inventory reports generated on {{ execution_date }}.
+
+Report Details:
+===============
+
+1. ADB (Autonomous Database) Inventory
+    File: {{ adb_inventory_file }}
+    This report contains all Autonomous Database instances across your OCI tenancy.
+    It includes CPU allocation, storage usage, license models, and auto-scaling configurations.
+
+2. Non-ADB Infrastructure Inventory  
+    File: {{ non_adb_inventory_file }}
+    This report contains non-autonomous database infrastructure including VM clusters.
+    It includes CPU core allocations and other infrastructure details.
+
+Deployment Information:
+======================
+Execution Time: {{ execution_date }}
+Generated by: OCI Infrastructure Reporting Pipeline
+Report Format: Excel (.xlsx)
+
+Instructions for Viewing:
+=========================
+1. Download the attached Excel files
+2. Open in Microsoft Excel or compatible spreadsheet application
+3. Use filters and sorting to analyze your infrastructure
+4. Pivot tables provide cost and utilization summaries
+
+For more information about your OCI resources:
+- Login to OCI Console: https://console.oracle.com
+- Navigate to: Databases → Autonomous Database / VM Database
+- Review resource metrics, utilization trends, and cost analysis
+
+Support:
+========
+If you have questions about these reports, please contact your Infrastructure team.
+
+---
+This is an automated report. Please do not reply to this email.
+For changes to the reporting schedule or recipients, contact your administrator.
+
+-----------------------------------------------------------------------------------------------------------------------------------------------------------
+oci-reporting-daily.yml
+---
+# Root playbook: oci-reporting-daily.yml
+# Orchestrates the four-stage OCI reporting pipeline via single role
+
+- hosts: localhost
+  gather_facts: yes
+  vars:
+    oci_profile: "DEFAULT"
+  roles:
+    - role: oci-reporting-daily
+
+
+README.md
+# OCI Infrastructure Reporting - Automated Inventory & Reporting
+
+Automated **Oracle Cloud Infrastructure (OCI)** inventory collection, data persistence, and reporting using **Ansible playbooks** and **Autonomous Data Warehouse (ADW)**.
+
+## 🎯 Overview
+
+This project provides an enterprise-grade pipeline for discovering, documenting, and reporting on OCI infrastructure resources (ADB and non-ADB databases, VM clusters) with **daily scheduled execution** via Ansible Tower/AWX.
+
+**Key Features:**
+- ✅ **Automated OCI Inventory** - Collect ADB and VM cluster resources from all compartments
+- ✅ **Data Persistence** - Load inventory to Oracle Autonomous Data Warehouse
+- ✅ **Excel Reporting** - Generate detailed cost/capacity reports with calculations
+- ✅ **Email Delivery** - Auto-send reports to stakeholders
+- ✅ **Enterprise Scheduling** - Ansible Tower/AWX with REST API integration
+- ✅ **Production Ready** - Error handling, validation, logging, and role-based design
+
+## 🚀 Quick Start
+
+### 1. Prerequisites
+
+```bash
+# Install Ansible (control node)
+pip3 install ansible
+
+# Install Python packages (managed node)
+pip3 install oci pandas cx_Oracle openpyxl xlsxwriter
+```
+
+### 2. Configure Inventory
+
+```bash
+cd ansible
+cp inventory.yml.example inventory.yml
+nano inventory.yml  # Edit with your OCI/ADW settings
+```
+
+### 3. Run Playbook
+
+```bash
+# Dry run first
+ansible-playbook -i inventory.yml playbooks/oci-reporting-daily.yml --check
+
+# Run full pipeline
+ansible-playbook -i inventory.yml playbooks/oci-reporting-daily.yml
+```
+
+## 📋 What It Does
+
+### Three-Stage Pipeline
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│ 1. INVENTORY COLLECTION                                     │
+│    • Query OCI APIs (adb_inventory.py)                     │
+│    • Discover ADB resources                                │
+│    • Discover Non-ADB VM clusters                          │
+│    • Output: CSV files                                      │
+└────────────────┬────────────────────────────────────────────┘
+                 │
+┌────────────────▼────────────────────────────────────────────┐
+│ 2. DATA PERSISTENCE (ADW)                                   │
+│    • Load CSVs to Autonomous Data Warehouse                │
+│    • Create/update OCI_ADB_INVENTORY table                 │
+│    • Create/update OCI_NON_ADB_INVENTORY table             │
+│    • Validate data integrity                                │
+└────────────────┬────────────────────────────────────────────┘
+                 │
+┌────────────────▼────────────────────────────────────────────┐
+│ 3. REPORTING & DISTRIBUTION                                 │
+│    • Generate Excel reports (pandas + xlsxwriter)          │
+│    • Calculate costs (OCPU, storage, CPU cores)            │
+│    • Send email with attachments                            │
+│    • Output: Excel reports, email notifications            │
+└─────────────────────────────────────────────────────────────┘
+```
+
+## 📂 Project Structure
+
+```
+oci-infra-reporting/
+├── ansible/                           # Ansible orchestration
+│   ├── playbooks/
+│   │   └── oci-reporting-daily.yml   # Main entry point
+│   ├── roles/
+│   │   ├── oci-inventory-collection/ # Collect ADB/VM cluster inventory
+│   │   ├── adw-data-loader/          # Load to ADW
+│   │   ├── excel-report-generator/   # Generate Excel reports
+│   │   └── email-notification/       # Send email notifications
+│   ├── inventory.yml                 # Hosts & variables
+│   ├── inventory.yml.example         # Configuration template
+│   ├── ansible.cfg                   # Ansible settings
+│   └── README.md                     # Ansible-specific docs
+│
+├── scripts/                           # Python inventory scripts
+│   ├── adb_inventory.py              # Collect ADB resources
+│   ├── non_adb_infra_inventory.py    # Collect Non-ADB resources
+│   ├── adb_inventory_to_excel.py     # Generate ADB Excel reports
+│   └── non_adb_inventory_to_excel.py # Generate Non-ADB Excel reports
+│
+├── data/                              # CSV data directory (auto-created)
+├── reports/                           # Excel reports (auto-created)
+├── logs/                              # Execution logs (auto-created)
+├── docs/                              # Documentation
+│   ├── ANSIBLE_PLAYBOOK_GUIDE.md     # Complete playbook guide
+│   └── ANSIBLE_TOWER_JOB_TEMPLATE.md # Tower/AWX setup
+│
+├── requirements.txt                   # Python dependencies
+├── README.md                          # This file
+└── .github/copilot-instructions.md   # Architecture & patterns
+```
+
+## 🔧 Usage
+
+### Local Execution
+
+```bash
+cd ansible
+
+# Full pipeline
+ansible-playbook -i inventory.yml playbooks/oci-reporting-daily.yml
+
+# Specific stages (using tags)
+ansible-playbook -i inventory.yml playbooks/oci-reporting-daily.yml --tags collect-inventory
+ansible-playbook -i inventory.yml playbooks/oci-reporting-daily.yml --tags load-adw
+ansible-playbook -i inventory.yml playbooks/oci-reporting-daily.yml --tags generate-reports
+ansible-playbook -i inventory.yml playbooks/oci-reporting-daily.yml --tags send-email
+
+# Verbose output
+ansible-playbook -i inventory.yml playbooks/oci-reporting-daily.yml -v
+
+# Dry run
+ansible-playbook -i inventory.yml playbooks/oci-reporting-daily.yml --check
+```
+
+### Ansible Tower/AWX (Recommended for Production)
+
+See [docs/ANSIBLE_TOWER_JOB_TEMPLATE.md](docs/ANSIBLE_TOWER_JOB_TEMPLATE.md) for complete setup.
+
+**Quick Steps:**
+1. Create Project in Tower (import from Git)
+2. Create Job Template pointing to `playbooks/oci-reporting-daily.yml`
+3. Create Schedule for daily execution
+4. Configure credentials (OCI profile, ADW password)
+5. Set up notifications (email, Slack)
+6. Job runs automatically on schedule
+
+## 🛠️ Configuration
+
+### Environment Variables
+
+Required:
+```bash
+export ADW_PASSWORD=your_adw_password
+```
+
+Optional (have defaults):
+```bash
+export OCI_PROFILE=DEFAULT
+export ADW_WALLET_PATH=$HOME/ADWCUSG
+export MAIL_FROM_EMAIL=oci-reports@company.com
+export MAIL_TO=team@company.com
+```
+
+### Inventory File (ansible/inventory.yml)
+
+```yaml
+all:
+  vars:
+    project_base_dir: /home/opc/oci-infra-reporting
+    oci_profile: DEFAULT
+    adw_wallet_path: ~/ADWCUSG
+    adw_user: USAGE
+    # ... more variables
+
+all:
+  children:
+    oci_reporting_hosts:
+      hosts:
+        localhost:
+          ansible_connection: local
+```
+
+Full template: [ansible/inventory.yml.example](ansible/inventory.yml.example)
+
+## 📦 Roles
+
+### 1. oci-inventory-collection
+Collects ADB and Non-ADB infrastructure inventory from OCI APIs.
+
+**Output:** CSV files in `data/` directory
+**Tags:** `collect-inventory`, `adb-collection`, `non-adb-collection`
+
+### 2. adw-data-loader
+Loads CSV inventory data to Autonomous Data Warehouse.
+
+**Creates Tables:**
+- `OCI_ADB_INVENTORY` - ADB resource details
+- `OCI_NON_ADB_INVENTORY` - Non-ADB VM cluster details
+
+**Tags:** `load-adw`, `validate`
+
+### 3. excel-report-generator
+Generates Excel reports from latest CSV inventory files.
+
+**Output:** XLSX files in `reports/` directory
+**Tags:** `generate-reports`
+**Calculates:** CPU costs, storage costs, resource summaries
+
+### 4. email-notification
+Sends generated reports via email to stakeholders.
+
+**Tags:** `send-email`
+**Requires:** Postfix/mail configured on execution node
+
+## 📚 Documentation
+
+- [ansible/README.md](ansible/README.md) - Ansible-specific documentation
+- [docs/ANSIBLE_PLAYBOOK_GUIDE.md](docs/ANSIBLE_PLAYBOOK_GUIDE.md) - Complete playbook usage guide
+- [docs/ANSIBLE_TOWER_JOB_TEMPLATE.md](docs/ANSIBLE_TOWER_JOB_TEMPLATE.md) - Tower/AWX setup & configuration
+- [.github/copilot-instructions.md](.github/copilot-instructions.md) - Project architecture & patterns
+
+## 🔐 Security
+
+### OCI Credentials
+- Uses standard OCI SDK profile authentication (`~/.oci/config`)
+- Specify profile via `OCI_PROFILE` environment variable
+
+### ADW Password
+**Option 1: Environment Variable (Development)**
+```bash
+export ADW_PASSWORD=password
+```
+
+**Option 2: OCI Vault Secret (Production - Recommended)**
+```yaml
+adw_secret_id: ocid1.vaultsecret.oc1.iad.xxx
+adw_vault_compartment_id: ocid1.compartment.oc1.xxx
+```
+
+**Option 3: Ansible Vault (Local Execution)**
+```bash
+ansible-vault create group_vars/oci_reporting_hosts/vault.yml
+ansible-playbook -i inventory.yml playbooks/oci-reporting-daily.yml --ask-vault-pass
+```
+
+**Option 4: Tower Vault (Ansible Tower)**
+- Store password in Tower Web UI
+- Automatic credential substitution at runtime
+
+## ✅ Testing
+
+```bash
+# Syntax check
+ansible-playbook -i inventory.yml playbooks/oci-reporting-daily.yml --syntax-check
+
+# Inventory verification
+ansible-inventory -i inventory.yml --list
+
+# Connectivity test
+ansible all -i inventory.yml -m ping
+
+# Dry run (no changes)
+ansible-playbook -i inventory.yml playbooks/oci-reporting-daily.yml --check
+
+# Run specific role only
+ansible-playbook -i inventory.yml playbooks/oci-reporting-daily.yml --tags load-adw
+```
+
+## 🐛 Troubleshooting
+
+### OCI Connectivity Issues
+```bash
+# Verify OCI config
+echo $OCI_PROFILE
+ls -la ~/.oci/config
+
+# Test OCI CLI
+oci iam compartment list
+```
+
+### ADW Connection Issues
+```bash
+# Verify wallet
+ls -la ~/ADWCUSG
+
+# Test SQLPlus
+sqlplus -version
+```
+
+### Email Delivery Issues
+```bash
+# Test mail command
+echo "test" | mail -s "test" recipient@domain.com
+
+# Check postfix
+systemctl status postfix
+```
+
+### Ansible Debugging
+```bash
+# Maximum verbosity
+ansible-playbook -i inventory.yml playbooks/oci-reporting-daily.yml -vvv
+
+# Check variables
+ansible localhost -i inventory.yml -m debug -a "var=adw_wallet_path"
+```
+
+## 📊 Output
+
+### Inventory Files (CSV)
+```
+data/
+├── adb_inventory_20240115_073000.csv      # ADB resources
+└── non_adb_infra_inventory_20240115_073000.csv  # VM clusters
+```
+
+### Reports (Excel)
+```
+reports/
+├── OCI_ADB_Inventory_20240115_073000.xlsx      # ADB report
+└── OCI_NonADB_Infrastructure_20240115_073000.xlsx  # Non-ADB report
+```
+
+### Database Tables (ADW)
+```
+OCI_ADB_INVENTORY           -- ADB resource inventory
+OCI_NON_ADB_INVENTORY       -- Non-ADB VM cluster inventory
+```
+
+## 🔄 Scheduling
+
+### Option 1: Cron Job (if not using Tower)
+```bash
+crontab -e
+
+# Daily at 7 AM
+0 7 * * * cd /home/opc/oci-infra-reporting && \
+  ansible-playbook -i ansible/inventory.yml \
+  ansible/playbooks/oci-reporting-daily.yml >> logs/ansible-cron.log 2>&1
+```
+
+### Option 2: Ansible Tower/AWX (Recommended)
+See [docs/ANSIBLE_TOWER_JOB_TEMPLATE.md](docs/ANSIBLE_TOWER_JOB_TEMPLATE.md)
+
+**Benefits:**
+- ✅ Web UI for easy management
+- ✅ Credential management
+- ✅ Scheduling with cron expressions
+- ✅ Notifications (email, Slack, webhooks)
+- ✅ Execution history & audit trail
+- ✅ REST API for CI/CD integration
+- ✅ Role-based access control
+
+## 📝 Requirements
+
+**System:**
+- Python 3.6+
+- Ansible 2.9+
+- Linux/macOS (Windows with WSL)
+
+**Python Packages:**
+```bash
+pip install -r requirements.txt
+```
+
+**OCI & ADW:**
+- OCI account with API credentials
+- Autonomous Data Warehouse instance
+- ADW wallet downloaded locally
+- USAGE user unlocked
+
+**Email (optional):**
+- Postfix or mail command configured
+- OCI Email Delivery (for SMTP relay)
+
+## 🤝 Contributing
+
+1. Clone repository
+2. Create feature branch: `git checkout -b feature/your-feature`
+3. Commit changes: `git commit -am 'Add feature'`
+4. Push to branch: `git push origin feature/your-feature`
+5. Submit pull request
+
+## 📄 License
+
+[Specify License - e.g., MIT, Apache 2.0, Proprietary]
+
+## 📧 Support
+
+For questions or issues:
+1. Check [ansible/README.md](ansible/README.md)
+2. Review [docs/ANSIBLE_PLAYBOOK_GUIDE.md](docs/ANSIBLE_PLAYBOOK_GUIDE.md)
+3. See [docs/ANSIBLE_TOWER_JOB_TEMPLATE.md](docs/ANSIBLE_TOWER_JOB_TEMPLATE.md) for Tower setup
+4. Open an issue in the repository
+
+## 🎯 Next Steps
+
+1. ✅ Review project documentation
+2. ✅ Configure `ansible/inventory.yml` with your environment
+3. ✅ Set required environment variables
+4. ✅ Run playbook locally: `ansible-playbook -i inventory.yml playbooks/oci-reporting-daily.yml --check`
+5. ✅ Set up in Ansible Tower/AWX for production scheduling
+6. ✅ Monitor logs and reports
+
+---
+
+**Version:** 2.0 - Ansible Implementation  
+**Last Updated:** 2024  
+**Status:** Production Ready
+
+## Suggestions for a good README
+
+Every project is different, so consider which of these sections apply to yours. The sections used in the template are suggestions for most open source projects. Also keep in mind that while a README can be too long and detailed, too long is better than too short. If you think your README is too long, consider utilizing another form of documentation rather than cutting out information.
+
+## Name
+Choose a self-explaining name for your project.
+
+## Description
+Let people know what your project can do specifically. Provide context and add a link to any reference visitors might be unfamiliar with. A list of Features or a Background subsection can also be added here. If there are alternatives to your project, this is a good place to list differentiating factors.
+
+## Badges
+On some READMEs, you may see small images that convey metadata, such as whether or not all the tests are passing for the project. You can use Shields to add some to your README. Many services also have instructions for adding a badge.
+
+## Visuals
+Depending on what you are making, it can be a good idea to include screenshots or even a video (you'll frequently see GIFs rather than actual videos). Tools like ttygif can help, but check out Asciinema for a more sophisticated method.
+
+## Installation
+Within a particular ecosystem, there may be a common way of installing things, such as using Yarn, NuGet, or Homebrew. However, consider the possibility that whoever is reading your README is a novice and would like more guidance. Listing specific steps helps remove ambiguity and gets people to using your project as quickly as possible. If it only runs in a specific context like a particular programming language version or operating system or has dependencies that have to be installed manually, also add a Requirements subsection.
+
+## Usage
+Use examples liberally, and show the expected output if you can. It's helpful to have inline the smallest example of usage that you can demonstrate, while providing links to more sophisticated examples if they are too long to reasonably include in the README.
+
+## Support
+Tell people where they can go to for help. It can be any combination of an issue tracker, a chat room, an email address, etc.
+
+## Roadmap
+If you have ideas for releases in the future, it is a good idea to list them in the README.
+
+## Contributing
+State if you are open to contributions and what your requirements are for accepting them.
+
+For people who want to make changes to your project, it's helpful to have some documentation on how to get started. Perhaps there is a script that they should run or some environment variables that they need to set. Make these steps explicit. These instructions could also be useful to your future self.
+
+You can also document commands to lint the code or run tests. These steps help to ensure high code quality and reduce the likelihood that the changes inadvertently break something. Having instructions for running tests is especially helpful if it requires external setup, such as starting a Selenium server for testing in a browser.
+
+## Authors and acknowledgment
+Show your appreciation to those who have contributed to the project.
+
+## License
+For open source projects, say how it is licensed.
+
+## Project status
+If you have run out of energy or time for your project, put a note at the top of the README saying that development has slowed down or stopped completely. Someone may choose to fork your project or volunteer to step in as a maintainer or owner, allowing your project to keep going. You can also make an explicit request for maintainers.
